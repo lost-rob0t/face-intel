@@ -1,0 +1,10 @@
+[project]
+name = "replace-me"
+slug = "replace-me"
+public_url = ""
+
+[rage]
+method = "Recursive Analysis with Gated Execution"
+require_approval_table = true
+require_changelog = true
+max_active_implementations_per_project = 1

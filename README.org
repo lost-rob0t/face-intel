@@ -1,0 +1,84 @@
+#+title: RAGE Research Template
+#+description: Reusable Org-roam research, design, implementation, and verification control plane.
+
+* RAGE
+
+RAGE means *Recursive Analysis with Gated Execution*.
+
+The repository is a reusable research control plane. Research creates evidence. Design turns evidence into a bounded implementation proposal. Execution only advances through explicit gates. Results become new evidence and feed the next loop.
+
+* Repository shape
+
+#+begin_src text
+roam/research/      findings, source review, open questions
+roam/design/        implementation-ready designs
+roam/implement/     one active implementation per project
+roam/indexes/       project indexes and roadmaps
+scripts/            capture, promotion, status, sync, validation
+.github/workflows/  CI gates
+tests/              validator and workflow regression tests
+#+end_src
+
+The Org tree under =roam/= is the source of truth.
+
+* RAGE loop
+
+1. *Analyze*: inspect current state, sources, constraints, contradictions, and unknowns.
+2. *Gate*: record what evidence or approval is required before execution.
+3. *Execute*: perform only the bounded action admitted by the gate.
+4. *Evaluate*: record observed output, tests, failures, and new evidence.
+5. *Recurse*: update the state and begin the next loop from what actually happened.
+
+A green build is evidence. It is not approval by itself.
+
+* Start a project
+
+Create a research note:
+
+#+begin_src sh
+python3 scripts/save-research.py \
+  --project example \
+  --title "First investigation" \
+  --description "What we need to establish" \
+  --draft
+#+end_src
+
+Promote a design into the implementation slot:
+
+#+begin_src sh
+python3 scripts/implement.py roam/design/example/example-design.org
+#+end_src
+
+Record a terminal implementation result:
+
+#+begin_src sh
+python3 scripts/mark-design.py implemented \
+  --project example \
+  --summary "Implemented the bounded slice" \
+  --file src/example \
+  --test "python3 -m unittest discover -s tests -v"
+#+end_src
+
+Validate the repository:
+
+#+begin_src sh
+python3 scripts/sync.py
+python3 scripts/sync.py --check
+python3 scripts/validate-docs.py
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+#+end_src
+
+* Document contract
+
+Substantive Org documents carry a stable ID, title, description, status, file tags, an approval table, and a changelog. Research notes must distinguish observed facts, inference, contradictions, and unresolved questions.
+
+Do not load the entire corpus into an agent context for ordinary focused work. Load the active note, direct links, relevant index, source, and tests. Repository-wide audits are the exception.
+
+* Template use
+
+When creating a new repository from this template:
+
+1. replace the project metadata in =rage.toml=;
+2. keep the RAGE workflow and gates unless the project explicitly changes them;
+3. delete example notes after the first real project index exists;
+4. keep generated output and secrets out of Git.
