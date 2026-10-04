@@ -1,0 +1,41 @@
+:PROPERTIES:
+:ID: face-intel-person-data-roadmap-20261003
+:END:
+#+title: face-intel Person data roadmap
+#+description: The implemented foundation and separately scoped modules for broader supplied Person data.
+#+status: ACTIVE
+#+filetags: :face-intel:index:roadmap:
+
+* Foundation
+
+[[id:face-intel-foundation-20261003][Person service foundation]] establishes a stable
+actor-owned HTTP and Target boundary with CouchDB persistence. It accepts canonical
+supplied Person fields, exact names/aliases, photos, and explicit candidate annotations.
+[[id:face-intel-research-contract-20261003][Contract findings]] record the generated local pin.
+
+* Next Modules
+
+| Slice | Capability | Dependency | State |
+|-------+------------+------------+-------|
+| Supplied Person fields | Add focused importers for user-provided accounts, contact records, and biography data | Canonical Person and typed references | NOT STARTED |
+| Evidence reconciliation | Record provenance and conflicts when supplied sources disagree | Source references and revision discipline | NOT STARTED |
+| Change projection | Consume CouchDB _changes with durable opaque checkpoints and replay | Idempotent writes and supervised worker | NOT STARTED |
+| Broker Target transport | Route the same commands through the existing StarIntel transport | Final upstream 0.10.1 port and lease contract | NOT STARTED |
+| Person search | Add richer text search as a derived projection | Exact name view and observed requirements | NOT STARTED |
+| Service plugin | Optional StarIntel-server delegation to this actor service | Stable service manifest | NOT STARTED |
+
+The repository is extensible; the foundation does not claim to handle every Person
+data capability already. There are no biometric identity or gender-inference modules.
+
+* Approval Table
+
+| Approval area | Required authority | State | Evidence required | Evidence reference |
+|---------------+--------------------+-------+-------------------+--------------------|
+| Foundation | Repository owner | APPROVED | Explicit instruction to build | User request, 2026-10-03 |
+| Later module implementation | Repository owner | NOT STARTED | Scope and acceptance evidence for the chosen slice | This roadmap lists future work only |
+
+* Changelog
+
+| Date | Change | Author or actor | Evidence |
+|------+--------+-----------------+----------|
+| 2026-10-03 | Establish extensible Person data roadmap | Codex | User requested future Person data expansion |

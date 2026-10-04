@@ -1,0 +1,73 @@
+:PROPERTIES:
+:ID: face-intel-research-contract-20261003
+:END:
+#+title: face-intel contract and runtime findings
+#+description: Observed upstream generated contracts and implementation boundaries for the Person service foundation.
+#+status: VERIFIED
+#+filetags: :face-intel:research:contract:
+
+* Verified Facts
+
+Retrieved 2026-10-03:
+
+- face-intel begins from the RAGE template at commit 452d09f82c294ed767ea6076d09e712ea6416f18.
+- star-lang/main at f76195bef58e7f9518754ed70b578abf325d460e lacks specs/starintel/0.10.1/.
+- The generated 0.10.1 consumer contract is available at commit
+  5837e9924cf4ead99ccf085521121c7f6ad4703e on codex/starintel-0101-consumer-contract.
+- Its release-lock.json specifies lowerCamelCase, schemaVersion 0.10.1, and
+  authority org.starintel/core@1. Generated definitions include Person, Picture,
+  Image, Relation, Target, and ActorManifest; they do not include Face or Photo.
+- Relations require source, destination, and predicate. Typed references require
+  schema and id. Pictures require bytesHash and bytesHashAlgorithm.
+- Local copies match upstream SHA-256 release hashes. The schema hash is
+  a7e81d8ff3361cc8a331ee6c81c3c8d539059f037944b7c54a61323c7af1ec3c.
+- Installed Pykka 4.4.2 uses an unbounded queue by default; actor source inspection
+  confirmed the overridable _create_actor_inbox hook. This service supplies a
+  bounded queue and propagates monotonic command deadlines.
+
+Primary sources:
+
+- [[https://github.com/lost-rob0t/star-lang/tree/5837e9924cf4ead99ccf085521121c7f6ad4703e/specs/starintel/0.10.1][Pinned Star Language contract]]
+- [[https://pykka.readthedocs.io/latest/reference/actors/][Pykka actors and lifecycle]]
+- [[https://docs.couchdb.org/en/stable/api/document/attachments.html][CouchDB document attachments]]
+- [[https://docs.couchdb.org/en/stable/api/ddoc/views.html][CouchDB views]]
+- [[file:../../../src/face_intel/contracts/pin.json][Local contract pin and hashes]]
+
+* Inference
+
+The service can progress independently of upstream branch promotion by consuming
+an exact local generated dependency. A view keyed by dataset and normalized name
+supports exact name/alias lookup without inventing a competing Person schema.
+Explicit annotation relations can be queried independently from Person fields.
+
+* Contradictions
+
+Earlier conceptual examples used _id, schema_version, nested data, and untyped
+references as public StarIntel objects. Those examples do not match this generated
+contract. _id and _rev belong only in the CouchDB persistence adapter.
+
+The earlier broader face-recognition design is not the implemented scope. This
+foundation implements supplied Person data and explicit photo annotations only.
+
+* Unresolved Questions
+
+- Which future merged Star Language commit replaces the current local pin?
+- Which project-wide license should the repository owner select?
+- Durable Target scheduling, broker consumption, conflict reconciliation across
+  replicas, and external person-data connectors remain future slices.
+- Local tests use a mock HTTP transport; real CouchDB compatibility is verified
+  by the separate integration job, whose result must be observed before claiming
+  that check passed.
+
+* Approval Table
+
+| Approval area | Required authority | State | Evidence required | Evidence reference |
+|---------------+--------------------+-------+-------------------+--------------------|
+| Foundation and local pin | Repository owner | APPROVED | Explicit request to build and continue | User messages, 2026-10-03 |
+| Upstream source modification | Outside this change | NOT APPLICABLE | Reason for exclusion | Only unmodified local dependencies are consumed |
+
+* Changelog
+
+| Date | Change | Author or actor | Evidence |
+|------+--------+-----------------+----------|
+| 2026-10-03 | Record contract, runtime, and scope findings | Codex | Upstream repository reads and local source inspection |

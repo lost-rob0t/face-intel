@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "face-intel"
+version = "0.1.0"
+description = "Actor-owned StarIntel Person records and photo annotations backed by CouchDB"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.142,<0.143",
+  "httpx>=0.28,<0.29",
+  "jsonschema>=4.26,<5",
+  "Pillow>=12.3,<13",
+  "pykka>=4.4,<5",
+  "uvicorn>=0.54,<0.55",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.1,<10", "ruff>=0.16,<0.17"]
+
+[project.scripts]
+face-intel = "face_intel.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/face_intel"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["src/face_intel/contracts"]
+include = ["src/face_intel/*.py", "tests/test_service.py", "tests/test_couch.py", "tests/test_spec.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
