@@ -2,6 +2,7 @@ import hmac
 import json
 import queue
 from contextlib import asynccontextmanager
+from typing import Literal
 
 import pykka
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -19,6 +20,14 @@ class PhotoAnnotation(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     photoId: str = Field(min_length=1, max_length=512)
     personId: str = Field(min_length=1, max_length=512)
+    basis: str = Field(min_length=1, max_length=2000)
+
+
+class FaceAnnotation(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    faceId: str = Field(min_length=1, max_length=512)
+    personId: str = Field(min_length=1, max_length=512)
+    personType: Literal["person", "candidate-person"] = "person"
     basis: str = Field(min_length=1, max_length=2000)
 
 
@@ -156,5 +165,35 @@ def create_app(settings: Settings | None = None, store=None) -> FastAPI:
     @app.post("/v1/targets", dependencies=secured)
     async def target(request: Request):
         return await dispatch(request, "execute-target", await read_object(request))
+
+    @app.post("/v1/face-observations", dependencies=secured)
+    async def ingest_face(request: Request):
+        return await dispatch(request, "ingest-face-observation", await read_object(request))
+
+    @app.get("/v1/face-observations/{identifier:path}", dependencies=secured)
+    async def get_face(
+        request: Request, identifier: str, limit: int = 20, after: str | None = None
+    ):
+        return await dispatch(
+            request, "get-face", {"id": identifier, "limit": limit, "after": after}
+        )
+
+    @app.post("/v1/candidate-persons", dependencies=secured)
+    async def ingest_candidate(request: Request):
+        return await dispatch(request, "ingest-candidate-person", await read_object(request))
+
+    @app.get("/v1/candidate-persons/{identifier:path}", dependencies=secured)
+    async def get_candidate(request: Request, identifier: str):
+        return await dispatch(request, "get-candidate-person", {"id": identifier})
+
+    @app.post("/v1/links/face-person", dependencies=secured)
+    async def link_face(request: Request):
+        try:
+            annotation = FaceAnnotation.model_validate(await read_object(request))
+        except ValidationError as exc:
+            raise InvalidDocument(
+                "Expected faceId, personId, personType and annotation basis"
+            ) from exc
+        return await dispatch(request, "link-face-person", annotation.model_dump())
 
     return app

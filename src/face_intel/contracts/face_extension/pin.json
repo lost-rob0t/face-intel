@@ -1,0 +1,17 @@
+{
+  "repository": "https://github.com/lost-rob0t/star-lang",
+  "commit": "cf7dbd357aeb557ed97435e3c06f1b7d367dbf50",
+  "sourcePath": "specs/starintel/extensions/face-intel/0.1.0",
+  "authorityLibrary": "org.starintel/face-intel@1",
+  "releaseVersion": "0.1.0",
+  "schemaVersion": "0.10.1",
+  "files": {
+    "face-intel.star": "2faddb6fe4af0ab6640ce02cd56e9dded0d1ce3373ff5eebe09b2e1352c295d4",
+    "release-lock.json": "b958a70d8d447980d62d026d558068ee0188a0febc3ee7a280aae6bea9b3886b",
+    "fixtures.json": "b5112b5f14d8441e38cc2de25c0433dbb47e433092303c48e9ba8da2a63534f2",
+    "README.md": "0e946408ad433cc84e53b681618bb375631ac5a3c13b92fad6cb0d5a0f0e5d2f",
+    "schema.json": "f435ba34fe5c0cd0bdc98b498b9cdc917a988b452aae5f172a41f774d04635ca",
+    "face_intel_types.py": "830f423cb367e322724bb883c811e146e1dd3ae5fd82dc5f16ba7542162fa35e",
+    "portable-manifest.json": "921790d632d2c022532c75e642df6a6532b3c7a8227abdd5b4df05cb0c265e6a"
+  }
+}

@@ -10,10 +10,12 @@ import httpx
 from .config import Settings
 from .documents import LINK_PREDICATE
 from .errors import Conflict, NotFound, StorageUnavailable
+from .face_documents import FACE_CANDIDATE_PREDICATE
 from .spec import validate
 
 VIEW_NAMES = """function(doc) {
-  if (doc.dtype !== 'person' || doc.deleted || !doc.extensions) return;
+  if (doc.dtype !== 'person' && doc.dtype !== 'candidate-person') return;
+  if (doc.deleted || !doc.extensions) return;
   var state = doc.extensions.faceIntel;
   if (!state || !Array.isArray(state.nameKeys)) return;
   state.nameKeys.forEach(function(name) { emit([doc.dataset, name], null); });
@@ -23,6 +25,11 @@ VIEW_LINKS = """function(doc) {
   if (doc.predicate !== 'LINK_PREDICATE') return;
   emit([doc.dataset, doc.destination.id], null);
 }""".replace("LINK_PREDICATE", LINK_PREDICATE)
+VIEW_FACE_CANDIDATES = """function(doc) {
+  if (doc.dtype !== 'face-person-candidate' || doc.deleted || !doc.source) return;
+  if (doc.predicate !== 'FACE_PREDICATE') return;
+  emit([doc.dataset, doc.source.id], null);
+}""".replace("FACE_PREDICATE", FACE_CANDIDATE_PREDICATE)
 
 
 def public_document(raw: dict) -> dict:
@@ -75,7 +82,11 @@ class CouchStore:
         if response.status_code not in {201, 202, 412}:
             raise StorageUnavailable("Unable to initialize CouchDB database")
         path = f"{self.database}/_design/face-intel"
-        views = {"by_name": {"map": VIEW_NAMES}, "photo_links": {"map": VIEW_LINKS}}
+        views = {
+            "by_name": {"map": VIEW_NAMES},
+            "photo_links": {"map": VIEW_LINKS},
+            "face_candidates": {"map": VIEW_FACE_CANDIDATES},
+        }
         for _ in range(3):
             try:
                 current = self.request("GET", path).json()
@@ -104,6 +115,8 @@ class CouchStore:
 
     def get(self, identifier: str, dtype: str) -> dict:
         document = public_document(self.raw_get(identifier))
+        if document.get("dtype") != dtype:
+            raise NotFound("Record has a different document type")
         validate(document, dtype, self.settings.dataset)
         return document
 
@@ -170,9 +183,17 @@ class CouchStore:
         if after and rows and rows[0]["id"] == after:
             rows = rows[1:]
         page = rows[:limit]
-        dtype = "person" if view == "by_name" else "relation"
         documents = [public_document(row["doc"]) for row in page]
         for document in documents:
+            dtype = (
+                document["dtype"]
+                if view == "by_name"
+                else "face-person-candidate"
+                if view == "face_candidates"
+                else "relation"
+            )
+            if view == "by_name" and dtype not in {"person", "candidate-person"}:
+                raise StorageUnavailable("Invalid document in the name index")
             validate(document, dtype, self.settings.dataset)
         return {"documents": documents, "nextCursor": page[-1]["id"] if len(rows) > limit else None}
 
