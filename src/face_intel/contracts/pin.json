@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/lost-rob0t/star-lang",
+  "commit": "5837e9924cf4ead99ccf085521121c7f6ad4703e",
+  "sourcePath": "specs/starintel/0.10.1",
+  "schemaVersion": "0.10.1",
+  "files": {
+    "schema.json": "a7e81d8ff3361cc8a331ee6c81c3c8d539059f037944b7c54a61323c7af1ec3c",
+    "starintel_types.py": "4a2afc894ca4fb351cecb8deb13860e53a0f006312262a47fe857beb92bffc47",
+    "core.star": "f0f2fe0aa759eab974e348b42c11615402bb52fba644cab455c069bb585440ef",
+    "release-lock.json": "f07357339465a564505c89e23264d2d7343a49a2e66b3386d0b14f17c214932e"
+  }
+}

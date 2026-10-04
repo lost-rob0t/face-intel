@@ -1,7 +1,7 @@
 [project]
-name = "replace-me"
-slug = "replace-me"
-public_url = ""
+name = "face-intel"
+slug = "face-intel"
+public_url = "https://github.com/lost-rob0t/face-intel"
 
 [rage]
 method = "Recursive Analysis with Gated Execution"

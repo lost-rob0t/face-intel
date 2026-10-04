@@ -14,14 +14,56 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.12'
+      - name: Install locked service dependencies
+        run: |
+          python3 -m pip install uv==0.12.19
+          uv sync --frozen --extra dev
+      - name: Verify local Star Language pin
+        run: uv run --frozen --extra dev python3 scripts/check-spec.py
+      - name: Lint and format service
+        run: |
+          uv run --frozen --extra dev ruff check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_live_couch.py tests/support.py
+          uv run --frozen --extra dev ruff format --check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_live_couch.py tests/support.py
       - name: Compile scripts
-        run: python3 -m py_compile scripts/*.py
+        run: uv run --frozen --extra dev python3 -m py_compile scripts/*.py
       - name: Unit tests
-        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+        run: uv run --frozen --extra dev python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: Synchronize structure
         run: python3 scripts/sync.py
       - name: Check synchronization
         run: python3 scripts/sync.py --check
       - name: Validate research control plane
         run: python3 scripts/validate-docs.py
+
+  couchdb-integration:
+    runs-on: ubuntu-latest
+    services:
+      couchdb:
+        image: couchdb:3.5.2.1
+        env:
+          COUCHDB_USER: fixture-user
+          COUCHDB_PASSWORD: fixture-password-not-for-production
+        ports:
+          - 5984:5984
+        options: >-
+          --health-cmd 'curl --fail http://localhost:5984/_up'
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      FACE_INTEL_RUN_LIVE_COUCH: '1'
+      COUCHDB_URL: http://127.0.0.1:5984
+      COUCHDB_USERNAME: fixture-user
+      COUCHDB_PASSWORD: fixture-password-not-for-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install locked service dependencies
+        run: |
+          python3 -m pip install uv==0.12.19
+          uv sync --frozen --extra dev
+      - name: Persist, query, and restart against real CouchDB
+        run: uv run --frozen --extra dev python3 -m unittest discover -s tests -p 'test_live_couch.py' -v

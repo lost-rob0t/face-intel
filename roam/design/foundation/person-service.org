@@ -1,0 +1,90 @@
+:PROPERTIES:
+:ID: face-intel-foundation-20261003
+:END:
+#+title: face-intel Person service foundation
+#+description: Bounded Pykka actors and CouchDB Person/Picture/Relation data with one HTTP and Target boundary.
+#+status: IMPLEMENTED
+#+filetags: :face-intel:design:foundation:
+
+* Scope
+
+Implement canonical supplied Person records, exact name/alias lookup, content-addressed
+Picture ingestion, explicit candidate photo-to-Person annotations, and synchronous Target
+operations. No biometric matching, face-to-name identification, or inferred gender is
+implemented. This slice does not claim those earlier requested capabilities are complete.
+
+The service owns HTTP; generic StarIntel ingest is unchanged. CouchDB owns durable
+documents and image attachments. Pykka actors own state and route typed commands.
+Future modules can extend supplied Person records without replacing this boundary.
+
+* Contract
+
+Pin the unmodified generated Star Language 0.10.1 schema and Python types, core.star,
+and release lock at upstream commit 5837e9924cf4ead99ccf085521121c7f6ad4703e.
+Verify all local hashes at startup and against the upstream release lock.
+Public documents use lowerCamelCase, id, schemaVersion, and typed StarReference values.
+CouchDB _id/_rev/_attachments exist only in the persistence adapter.
+
+* Execution Gate
+
+The user instructed “Lets do face-intel”, supplied the repository URL, and directed
+“just pin the spec locally? and keep working” on 2026-10-03. These authorize the
+bounded foundation. The implementation is limited to this scope. Live deployment, merging,
+and changing upstream Star Language artifacts are separate actions.
+
+* Acceptance
+
+- HTTP and Target reads run through the same Pykka actors.
+- Name lookup includes normalized aliases and preserves Unicode.
+- Person edits require current revisions; duplicate identical writes are idempotent.
+- Picture attachments are committed atomically with canonical metadata.
+- Explicit annotation links remain candidate-only and never rewrite identity.
+- Queues, request bodies, image pixels, and request times have hard bounds.
+- Production defaults to CouchDB; test doubles cannot be selected through environment.
+- Existing RAGE checks and service regression tests pass.
+
+* Approval Table
+
+| Approval area | Required authority | State | Evidence required | Evidence reference |
+|---------------+--------------------+-------+-------------------+--------------------|
+| Foundation implementation | Repository owner | APPROVED | Explicit instruction to proceed | User messages, 2026-10-03, quoted in Execution Gate |
+| Local spec pin | Repository owner | APPROVED | Explicit request to pin and continue | User message, 2026-10-03 |
+| Live deployment and merge | Repository owner | NOT STARTED | Separate release instruction | This task prepares a reviewable change |
+| Biometric identification | Outside this slice | NOT APPLICABLE | Reason for exclusion | Scope excludes biometric implementation |
+
+* Changelog
+
+| Date | Change | Author or actor | Evidence |
+|------+--------+-----------------+----------|
+| 2026-10-03 | Authorize bounded foundation and local 0.10.1 dependency pin | Codex | User request and observed upstream lock |
+
+* IMPLEMENTED RAGE Execution Record
+:PROPERTIES:
+:STATUS_EVENT_ID: 874574b1-3207-43f2-b1e8-02b0cf8718b4
+:RECORDED_AT: 2026-10-03T20:23:07-04:00
+:END:
+
+** Summary
+Implemented supplied Person records, content-addressed photos, explicit candidate annotations, and actor-owned HTTP/Target operations with a local generated StarIntel 0.10.1 pin.
+
+** Files
+- src/face_intel
+- tests/test_service.py
+- tests/test_couch.py
+- tests/test_spec.py
+- tests/test_live_couch.py
+- .github/workflows/validate.yml
+- README.org
+
+** Tests
+- python3 -m unittest discover -s tests -p test_*.py -v: 37 tests; 36 passed; real CouchDB test skipped locally
+- ruff check and ruff format --check: passed
+- python3 -m py_compile scripts/*.py: passed
+- scripts/check-spec.py: generated artifacts verified against upstream release lock
+- uv build --wheel: passed
+
+** Commits
+- None
+
+** Notes
+- Live CouchDB validation is delegated to the repository CI job; no local live database result is claimed.

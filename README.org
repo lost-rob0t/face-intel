@@ -1,84 +1,219 @@
-#+title: RAGE Research Template
-#+description: Reusable Org-roam research, design, implementation, and verification control plane.
+:PROPERTIES:
+:ID: face-intel-readme-20261003
+:END:
+#+title: face-intel
+#+description: Actor-owned StarIntel Person records, photos, and explicit candidate annotations backed by CouchDB.
+#+status: FOUNDATION
+#+filetags: :face-intel:documentation:
 
-* RAGE
+* Working Foundation
 
-RAGE means *Recursive Analysis with Gated Execution*.
+face-intel is a standalone Person data actor service. Pykka actors own supplied
+Person records, photo ingestion, explicit candidate photo-to-Person annotations,
+exact normalized name/alias search, and canonical Target dispatch. CouchDB stores
+canonical documents and original images. The service owns its HTTP interface.
 
-The repository is a reusable research control plane. Research creates evidence. Design turns evidence into a bounded implementation proposal. Execution only advances through explicit gates. Results become new evidence and feed the next loop.
+This foundation implements record management and explicit annotations. It does
+not implement biometric matching, face-to-name identification, inferred gender,
+or automatic person enrichment. Later Person data modules have a separate roadmap
+in =roam/indexes/person-data-roadmap.org=.
 
-* Repository shape
+* Run
 
-#+begin_src text
-roam/research/      findings, source review, open questions
-roam/design/        implementation-ready designs
-roam/implement/     one active implementation per project
-roam/indexes/       project indexes and roadmaps
-scripts/            capture, promotion, status, sync, validation
-.github/workflows/  CI gates
-tests/              validator and workflow regression tests
-#+end_src
-
-The Org tree under =roam/= is the source of truth.
-
-* RAGE loop
-
-1. *Analyze*: inspect current state, sources, constraints, contradictions, and unknowns.
-2. *Gate*: record what evidence or approval is required before execution.
-3. *Execute*: perform only the bounded action admitted by the gate.
-4. *Evaluate*: record observed output, tests, failures, and new evidence.
-5. *Recurse*: update the state and begin the next loop from what actually happened.
-
-A green build is evidence. It is not approval by itself.
-
-* Start a project
-
-Create a research note:
+Python 3.12+, uv, and CouchDB 3.x are required. Docker Compose is optional.
 
 #+begin_src sh
-python3 scripts/save-research.py \
-  --project example \
-  --title "First investigation" \
-  --description "What we need to establish" \
-  --draft
+uv sync --frozen --extra dev
+export FACE_INTEL_API_TOKEN="$(uv run --frozen python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+read -r -p 'CouchDB username: ' COUCHDB_USERNAME
+read -rs -p 'CouchDB password: ' COUCHDB_PASSWORD
+export COUCHDB_USERNAME COUCHDB_PASSWORD
+# Optional: start a new local CouchDB using the supplied Compose file.
+docker compose up -d
+uv run --frozen face-intel
 #+end_src
 
-Promote a design into the implementation slot:
+The default service address is =http://127.0.0.1:8088=. Configure an existing CouchDB
+with =COUCHDB_URL= and =COUCHDB_DATABASE=. =FACE_INTEL_DATASET= defaults to
+=face-intel=. Credentials and the API token are read from environment variables;
+no credential file is included. Keep the token in the same shell for API clients.
+The Compose volume persists CouchDB data across container restarts.
+
+An externally exposed service can be started through a reverse proxy or with:
 
 #+begin_src sh
-python3 scripts/implement.py roam/design/example/example-design.org
+uv run --frozen uvicorn face_intel.api:create_app --factory --host 0.0.0.0 --port 8088
 #+end_src
 
-Record a terminal implementation result:
+The database user must be able to create the database and maintain its
+=_design/face-intel= views. Deploying a live instance is separate from this PR.
 
-#+begin_src sh
-python3 scripts/mark-design.py implemented \
-  --project example \
-  --summary "Implemented the bounded slice" \
-  --file src/example \
-  --test "python3 -m unittest discover -s tests -v"
+* Local Star Language Pin
+
+=src/face_intel/contracts/= contains unmodified generated Star Language 0.10.1
+schema and Python types, =core.star=, and the upstream release lock from commit
+=5837e9924cf4ead99ccf085521121c7f6ad4703e=. =pin.json= records source and file hashes.
+Startup and =scripts/check-spec.py= verify the dependency against the upstream
+release lock. The current pin is from =codex/starintel-0101-consumer-contract=;
+it does not claim that branch has been merged into upstream main.
+
+Public objects use =id=, =schemaVersion=, lowerCamelCase fields, and typed
+=StarReference= objects. =Photo= in this service maps to the canonical =Picture=
+type. CouchDB =_id=, =_rev=, and =_attachments= are handled only in the store adapter;
+the public current revision is =rev=. Generated files must not be edited.
+See =THIRD_PARTY.md= for upstream attribution and retained license.
+
+* HTTP Interface
+
+All =/v1/= endpoints require =Authorization: Bearer <token>=. =/health= exposes
+service liveness only. Production always uses CouchDB; memory stores exist only
+as explicitly injected test fixtures.
+
+| Method | Path | Input or result |
+|--------+------+-----------------|
+| GET | /health | Actor liveness and contract version |
+| GET | /v1/manifest | Canonical public ActorManifest |
+| POST | /v1/persons | Canonical supplied Person document |
+| GET | /v1/search/name?q=... | Exact normalized name/alias page |
+| GET | /v1/persons/<id> | Person plus linked Pictures and Relations |
+| POST | /v1/photos | Raw PNG, JPEG, or WebP bytes |
+| GET | /v1/photos/<id> | Canonical Picture metadata |
+| GET | /v1/photo-bytes/<id> | Original image bytes |
+| POST | /v1/links/photo-person | photoId, personId, basis |
+| POST | /v1/targets | Canonical Target; same actor operations |
+
+Search normalizes Unicode with NFKC and casefold, then collapses whitespace. It
+matches complete names or aliases; this is not fuzzy text or biometric search.
+Equal names on different document IDs remain distinct Persons. Unnamed supplied
+Person documents are supported and simply have no name index keys.
+
+* Person and Photo Example
+
+#+begin_src python
+import os
+from pathlib import Path
+import httpx
+
+headers = {"Authorization": "Bearer " + os.environ["FACE_INTEL_API_TOKEN"]}
+with httpx.Client(base_url="http://127.0.0.1:8088", headers=headers) as client:
+    record = client.post("/v1/persons", json={
+        "id": "person:example", "dataset": "face-intel", "dtype": "person",
+        "schemaVersion": "0.10.1", "fullName": "Example Person",
+        "aliases": ["Example Alias"],
+    })
+    record.raise_for_status()
+    picture = client.post("/v1/photos", content=Path("photo.png").read_bytes())
+    picture.raise_for_status()
+    annotation = client.post("/v1/links/photo-person", json={
+        "photoId": picture.json()["id"], "personId": record.json()["id"],
+        "basis": "Explicit annotation supplied with these records",
+    })
+    annotation.raise_for_status()
 #+end_src
 
-Validate the repository:
+Supplied canonical Person fields and provenance are preserved. The reserved
+=extensions.faceIntel.nameKeys= projection is regenerated from supplied names
+and aliases. An annotation never identifies a face, merges people, or changes
+Person identity fields. Its Relation keeps =verificationStatus: candidate= and
+=extensions.faceIntel.candidate: true=.
+
+* Target Interface
+
+Targets address =actor: face-intel=. =options= is a JSON object. Operations:
+
+| Operation | target | Additional options | Output documents |
+|-----------+--------+--------------------+------------------|
+| search-name | Name or alias | limit, after | Person page |
+| get-person | Person ID | limit, after | Person, Picture, Relation page |
+| get-photo | Picture ID | None | Picture |
+| ingest-person | Person ID | document with matching id | Person |
+| ingest-photo | Content hash Picture ID | photoBase64 | Picture |
+| link-photo-person | Picture ID | personId, basis | Person, Picture, Relation |
+
+#+begin_src json
+{
+  "id": "target:example", "dataset": "face-intel", "dtype": "target",
+  "schemaVersion": "0.10.1", "actor": "face-intel", "target": "person:example",
+  "options": {"operation": "get-person", "limit": 20}
+}
+#+end_src
+
+The response contains =target=, =documents=, and =nextCursor=. The returned Target
+has state completed and typed references in =extensions.faceIntel.resultRefs=.
+It is a synchronous dispatch result; Target execution status is not persisted,
+leased, scheduled, or consumed from a broker by this slice. Scheduling fields
+are the responsibility of the caller's scheduler. Large photos should use raw
+HTTP upload; Target JSON bodies are capped at 1 MiB including base64 encoding.
+
+* Reliability and Limits
+
+- Person creation and identical retries are idempotent. To edit a Person,
+  include its current =rev=. Stale revisions fail with HTTP 409.
+- Picture IDs are SHA-256 content hashes. The original attachment and metadata
+  are committed in the same CouchDB write. Identical photo retries are deduplicated.
+- An annotation ID derives from dataset, Picture, Person, and annotation basis.
+  Repeating the same annotation yields the same candidate Relation.
+- Name and annotation views are derived, dataset-scoped CouchDB indexes. Their
+  deterministic design source is installed idempotently; unrelated views survive.
+- Pages default to 20 and are capped at 100. Use returned =nextCursor= as =after=.
+  Person bundle pagination applies to Relations. Pictures are deduplicated per page.
+  View pages are not a snapshot across concurrent writes or replication.
+- Photos are capped at 10 MiB and 20 million pixels. Only PNG/JPEG/WebP is accepted.
+- Every actor mailbox is capped at 64 commands; admission waits at most 250 ms.
+  Public calls use a 30-second propagated deadline; CouchDB calls time out in 5 seconds.
+- Expired queued commands do not start new work. A network timeout during an active
+  write can still leave a committed document; retry the same ID/revision and inspect
+  the durable result. A client timeout is not proof that a write was rolled back.
+- Invalid input is 422, missing records 404, oversized bodies 413, and unavailable
+  actors/store or elapsed deadlines 503. Tokens, CouchDB credentials, and raw backend
+  error messages are not returned.
+
+* Actor Ownership
+
+=TargetActor= routes to =PersonActor= and =PhotoActor=. Those actors send immutable
+command envelopes to =StoreActor=, which owns CouchDB state and its HTTP client.
+Caller mappings are copied before mailbox transfer. Actors stop in reverse dependency
+order and startup failures clean up only this system's actor references.
+
+To add a Person module, retain canonical generated documents and typed references,
+add bounded commands to a focused actor, route both HTTP and Target transports to
+that actor, advertise only implemented capabilities, and add regression evidence.
+Do not expose data-specific operations in generic StarIntel ingest by default.
+
+* Verify
 
 #+begin_src sh
+uv run --frozen --extra dev python3 scripts/check-spec.py
+uv run --frozen --extra dev python3 -m unittest discover -s tests -p 'test_*.py' -v
+uv run --frozen --extra dev ruff check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_live_couch.py tests/support.py
 python3 scripts/sync.py
 python3 scripts/sync.py --check
 python3 scripts/validate-docs.py
-python3 -m unittest discover -s tests -p 'test_*.py' -v
 #+end_src
 
-* Document contract
+CI also starts real CouchDB and tests persistence, name views, Target output,
+image download, and survival across actor/app restart. To run that test locally
+against an existing server, provide credentials in the environment and set
+=FACE_INTEL_RUN_LIVE_COUCH=1=. It creates and deletes its own unique test database.
+Without that opt-in the live test is skipped; a skip is not a passing integration test.
 
-Substantive Org documents carry a stable ID, title, description, status, file tags, an approval table, and a changelog. Research notes must distinguish observed facts, inference, contradictions, and unresolved questions.
+* RAGE
 
-Do not load the entire corpus into an agent context for ordinary focused work. Load the active note, direct links, relevant index, source, and tests. Repository-wide audits are the exception.
+=roam/research/= owns observed facts, =roam/design/= owns canonical designs,
+=roam/implement/= holds at most one active implementation per project, and
+=roam/indexes/= owns the roadmap. The bounded foundation uses the user's direct
+instruction as its execution authorization. Promotion and outcomes use the
+existing =scripts/implement.py= and =scripts/mark-design.py= workflow.
 
-* Template use
+* Approval Table
 
-When creating a new repository from this template:
+| Approval area | Required authority | State | Evidence required | Evidence reference |
+|---------------+--------------------+-------+-------------------+--------------------|
+| Foundation implementation and local pin | Repository owner | APPROVED | Explicit instruction | User messages, 2026-10-03 |
+| Deployment or merge | Repository owner | NOT STARTED | Separate release instruction | Reviewable PR only |
 
-1. replace the project metadata in =rage.toml=;
-2. keep the RAGE workflow and gates unless the project explicitly changes them;
-3. delete example notes after the first real project index exists;
-4. keep generated output and secrets out of Git.
+* Changelog
+
+| Date | Change | Author or actor | Evidence |
+|------+--------+-----------------+----------|
+| 2026-10-03 | Replace template landing page with executable foundation guide | Codex | Source, regression tests, and pinned generated contract |
