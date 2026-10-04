@@ -6,7 +6,7 @@ import uuid
 
 import httpx
 from fastapi.testclient import TestClient
-from support import TOKEN, person, photo_bytes
+from support import TOKEN, candidate_person, face_observation, person, photo_bytes
 
 from face_intel.api import create_app
 from face_intel.config import Settings
@@ -64,12 +64,52 @@ class LiveCouchTests(unittest.TestCase):
                 response = client.post("/v1/targets", json=target, headers=headers)
                 self.assertEqual(response.status_code, 200, response.text)
                 self.assertEqual(response.json()["documents"], [record, picture, link])
+                response = client.post(
+                    "/v1/face-observations", json=face_observation(picture), headers=headers
+                )
+                self.assertEqual(response.status_code, 200, response.text)
+                face = response.json()
+                response = client.post(
+                    "/v1/candidate-persons",
+                    json=candidate_person(aliases=["Candidate Alias"]),
+                    headers=headers,
+                )
+                self.assertEqual(response.status_code, 200, response.text)
+                candidate = response.json()
+                response = client.post(
+                    "/v1/links/face-person",
+                    json={
+                        "faceId": face["id"],
+                        "personId": candidate["id"],
+                        "personType": "candidate-person",
+                        "basis": "Supplied integration fixture",
+                    },
+                    headers=headers,
+                )
+                self.assertEqual(response.status_code, 200, response.text)
+                face_link = response.json()
             # Restart actors and the HTTP client: documents and original image survive.
             with TestClient(create_app(settings)) as client:
                 response = client.get("/v1/photo-bytes/" + picture["id"], headers=headers)
                 self.assertEqual(response.content, photo_bytes())
                 bundle = client.get("/v1/persons/" + record["id"], headers=headers)
                 self.assertEqual(bundle.json()["relations"], [link])
+                response = client.get("/v1/face-observations/" + face["id"], headers=headers)
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(response.json()["face"], face)
+                self.assertEqual(response.json()["persons"], [candidate])
+                self.assertEqual(response.json()["candidates"], [face_link])
+                response = client.get(
+                    "/v1/search/name", params={"q": "CANDIDATE ALIAS"}, headers=headers
+                )
+                self.assertEqual(response.json()["documents"], [candidate])
+                target["target"] = face["id"]
+                target["options"] = {"operation": "get-face"}
+                response = client.post("/v1/targets", json=target, headers=headers)
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(
+                    response.json()["documents"], [face, picture, candidate, face_link]
+                )
         finally:
             with httpx.Client(
                 base_url=settings.couch_url,

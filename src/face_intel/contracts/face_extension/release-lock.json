@@ -1,0 +1,36 @@
+{
+  "artifacts": {
+    "FaceIntel.java": "bc8b2077f9cb554a9a8f648b9bc287facf388e172e8eca17d8f74d7831fc492f",
+    "FaceIntel.kt": "d55e4b4fc8486ede601f380e51b3fba8550f5db15cca400cea1a2455a2ae2e3d",
+    "face-intel-types.el": "ef0d442444b59293d0979fb582e5a30357604576c36ec783ac2ab73fe388279f",
+    "face_intel.lisp": "0f0ff84986097ac111888bda2b174fdce5e3a0d155eaa45ee6c6afbb2332b4f8",
+    "face_intel_types.go": "a22aa49ca5a16ce98ac96421f22521dbeebad589db5194e68002c41071b78297",
+    "face_intel_types.nim": "81246d3e9b28a23a6e9fe9fcbbe7779c841f65d3a448af7147385de6582ba19d",
+    "face_intel_types.pl": "1661e8bafc7a0cf8b2e61699d259c95d38a8eaeee4eb6698e0ba25415f0b3b29",
+    "face_intel_types.py": "830f423cb367e322724bb883c811e146e1dd3ae5fd82dc5f16ba7542162fa35e",
+    "face_intel_types.rs": "d4512b70af23129e1626fc1f1becde308aa0b317ebd357db1157a80aa46edcbc",
+    "face_intel_types.ts": "780137b6e43de13f0a5fcb80d477f648a8fb2f19303475b76b33e9553d38396b",
+    "portable-manifest.json": "921790d632d2c022532c75e642df6a6532b3c7a8227abdd5b4df05cb0c265e6a",
+    "resolved-manifest.json": "ef92cf0f610d2504ac1c85843255583f9b6ae2fe2f4c57a2a6ff86f444cc03f6",
+    "schema.json": "f435ba34fe5c0cd0bdc98b498b9cdc917a988b452aae5f172a41f774d04635ca"
+  },
+  "authorityLibrary": "org.starintel/face-intel@1",
+  "canonicalKeyStyle": "lowerCamelCase",
+  "coreReleaseLockHash": "7a8a98ca14220e00fe7ebf90501fb36062c5b8b5befae1bb34378356a8f0c994",
+  "hashAlgorithm": "sha256",
+  "imports": [
+    {
+      "digest": "sha256:e09205e71fcd0f2bf87ff7d104c5ccff298d0054764def81e00f81a6bd8639fc",
+      "kind": "import",
+      "name": "org.starintel/core@1",
+      "version": "0.10.1"
+    }
+  ],
+  "releaseVersion": "0.1.0",
+  "schemaVersion": "0.10.1",
+  "sources": {
+    "README.md": "0e946408ad433cc84e53b681618bb375631ac5a3c13b92fad6cb0d5a0f0e5d2f",
+    "face-intel.star": "2faddb6fe4af0ab6640ce02cd56e9dded0d1ce3373ff5eebe09b2e1352c295d4",
+    "fixtures.json": "b5112b5f14d8441e38cc2de25c0433dbb47e433092303c48e9ba8da2a63534f2"
+  }
+}

@@ -15,6 +15,7 @@ from .config import Settings
 from .couch import CouchStore
 from .documents import annotated_link, normalize_name, picture_from_bytes, prepare_person
 from .errors import InvalidDocument
+from .face_documents import check_face_bounds, face_candidate
 from .spec import VERSION, reference, validate, verify_pin
 
 
@@ -83,6 +84,7 @@ class PersonActor(BoundedActor):
         remaining(message.deadline, self.settings.request_timeout)
         self.deadline = message.deadline
         if message.operation == "ingest-person":
+            validate(message.payload, "person", self.settings.dataset)
             document = prepare_person(message.payload, self.settings.dataset)
             return self.ask_store("put", document=document)
         if message.operation == "get-person-record":
@@ -161,6 +163,73 @@ class PhotoActor(BoundedActor):
         raise InvalidDocument("Unsupported photo operation")
 
 
+class FaceActor(BoundedActor):
+    def __init__(self, store, settings: Settings):
+        super().__init__()
+        self.store = store
+        self.settings = settings
+
+    def ask_store(self, operation: str, **payload):
+        return self.store.ask(
+            Command(operation, payload, self.deadline),
+            timeout=remaining(self.deadline, self.settings.request_timeout),
+        )
+
+    def on_receive(self, message: Command):
+        remaining(message.deadline, self.settings.request_timeout)
+        self.deadline = message.deadline
+        operation, payload = message.operation, message.payload
+        if operation == "ingest-face-observation":
+            validate(payload, "face-observation", self.settings.dataset)
+            picture = self.ask_store("get", identifier=payload["picture"]["id"], dtype="picture")
+            check_face_bounds(payload, picture)
+            return self.ask_store("put", document=payload)
+        if operation == "ingest-candidate-person":
+            validate(payload, "candidate-person", self.settings.dataset)
+            return self.ask_store("put", document=prepare_person(payload, self.settings.dataset))
+        if operation == "get-candidate-person":
+            return self.ask_store("get", identifier=payload["id"], dtype="candidate-person")
+        if operation == "get-face-record":
+            return self.ask_store("get", identifier=payload["id"], dtype="face-observation")
+        if operation == "link-face-person":
+            if not all(
+                isinstance(payload.get(key), str) and payload[key].strip()
+                for key in ("faceId", "personId", "basis")
+            ):
+                raise InvalidDocument("Expected faceId, personId and annotation basis")
+            dtype = payload.get("personType", "person")
+            if not isinstance(dtype, str) or dtype not in {"person", "candidate-person"}:
+                raise InvalidDocument("personType must be person or candidate-person")
+            face = self.ask_store("get", identifier=payload["faceId"], dtype="face-observation")
+            person = self.ask_store("get", identifier=payload["personId"], dtype=dtype)
+            relation = face_candidate(face, person, payload["basis"], self.settings.dataset)
+            return self.ask_store("put", document=relation)
+        if operation == "get-face":
+            face = self.ask_store("get", identifier=payload["id"], dtype="face-observation")
+            picture = self.ask_store("get", identifier=face["picture"]["id"], dtype="picture")
+            page = self.ask_store(
+                "page",
+                view="face_candidates",
+                value=face["id"],
+                limit=payload["limit"],
+                after=payload.get("after"),
+            )
+            persons = {}
+            for relation in page["documents"]:
+                destination = relation["destination"]
+                dtype = destination["schema"].rsplit("/", 1)[1]
+                person = self.ask_store("get", identifier=destination["id"], dtype=dtype)
+                persons[person["id"]] = person
+            return {
+                "face": face,
+                "picture": picture,
+                "persons": list(persons.values()),
+                "candidates": page["documents"],
+                "nextCursor": page["nextCursor"],
+            }
+        raise InvalidDocument("Unsupported face operation")
+
+
 def page_options(payload: dict) -> dict:
     limit = payload.get("limit", 20)
     if type(limit) is not int or not 1 <= limit <= 100:
@@ -172,10 +241,11 @@ def page_options(payload: dict) -> dict:
 
 
 class TargetActor(BoundedActor):
-    def __init__(self, persons, photos, settings: Settings):
+    def __init__(self, persons, photos, faces, settings: Settings):
         super().__init__()
         self.persons = persons
         self.photos = photos
+        self.faces = faces
         self.settings = settings
 
     def forward(self, actor, operation: str, payload, deadline):
@@ -195,7 +265,63 @@ class TargetActor(BoundedActor):
         if not isinstance(extension, dict):
             raise InvalidDocument("extensions.faceIntel must be an object")
         operation = options.get("operation")
-        if operation == "search-name":
+        if operation in {"ingest-face-observation", "ingest-candidate-person"}:
+            document = options.get("document")
+            if not isinstance(document, dict) or document.get("id") != target["target"]:
+                raise InvalidDocument("options.document.id must match target")
+            result = self.forward(self.faces, operation, document, message.deadline)
+            documents = [result]
+        elif operation == "get-candidate-person":
+            result = self.forward(self.faces, operation, {"id": target["target"]}, message.deadline)
+            documents = [result]
+        elif operation == "get-face":
+            result = self.forward(
+                self.faces,
+                operation,
+                page_options({**options, "id": target["target"]}),
+                message.deadline,
+            )
+            documents = [
+                result["face"],
+                result["picture"],
+                *result["persons"],
+                *result["candidates"],
+            ]
+        elif operation == "link-face-person":
+            result = self.forward(
+                self.faces,
+                operation,
+                {
+                    "faceId": target["target"],
+                    "personId": options.get("personId"),
+                    "personType": options.get("personType", "person"),
+                    "basis": options.get("basis"),
+                },
+                message.deadline,
+            )
+            face = self.forward(
+                self.faces,
+                "get-face-record",
+                {"id": target["target"]},
+                message.deadline,
+            )
+            picture = self.forward(
+                self.photos,
+                "get-photo",
+                {"id": face["picture"]["id"]},
+                message.deadline,
+            )
+            destination_type = result["destination"]["schema"].rsplit("/", 1)[1]
+            person = self.forward(
+                self.faces if destination_type == "candidate-person" else self.persons,
+                "get-candidate-person"
+                if destination_type == "candidate-person"
+                else "get-person-record",
+                {"id": result["destination"]["id"]},
+                message.deadline,
+            )
+            documents = [face, picture, person, result]
+        elif operation == "search-name":
             result = self.persons.ask(
                 Command(
                     operation,
@@ -301,7 +427,9 @@ class FaceIntelSystem:
             self.refs.append(self.persons)
             self.photos = PhotoActor.start(self.store, settings)
             self.refs.append(self.photos)
-            self.targets = TargetActor.start(self.persons, self.photos, settings)
+            self.faces = FaceActor.start(self.store, settings)
+            self.refs.append(self.faces)
+            self.targets = TargetActor.start(self.persons, self.photos, self.faces, settings)
             self.refs.append(self.targets)
         except BaseException:
             self.close()
@@ -315,12 +443,20 @@ class FaceIntelSystem:
     def request(self, operation: str, payload):
         # Copy caller-owned mappings before transferring ownership into a mailbox.
         payload = deepcopy(payload)
-        if operation in {"search-name", "get-person"}:
+        if operation in {"search-name", "get-person", "get-face"}:
             payload = page_options(payload)
         if operation in {"ingest-person", "search-name", "get-person"}:
             actor = self.persons
         elif operation in {"ingest-photo", "get-photo", "photo-bytes", "link-photo-person"}:
             actor = self.photos
+        elif operation in {
+            "ingest-face-observation",
+            "ingest-candidate-person",
+            "get-face",
+            "get-candidate-person",
+            "link-face-person",
+        }:
+            actor = self.faces
         elif operation == "execute-target":
             actor = self.targets
         else:
@@ -347,9 +483,22 @@ class FaceIntelSystem:
                 "photo.get",
                 "person.photo.annotate",
                 "target.execute",
+                "face.observation.ingest",
+                "face.observation.get",
+                "candidate-person.ingest",
+                "candidate-person.get",
+                "face.person.annotate",
             ],
-            "accepts": ["person", "picture", "target"],
-            "produces": ["person", "picture", "relation", "target"],
+            "accepts": ["person", "picture", "target", "face-observation", "candidate-person"],
+            "produces": [
+                "person",
+                "picture",
+                "relation",
+                "target",
+                "face-observation",
+                "candidate-person",
+                "face-person-candidate",
+            ],
         }
         validate(manifest, "actor-manifest", self.settings.dataset)
         return manifest
