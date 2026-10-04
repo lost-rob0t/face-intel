@@ -47,7 +47,7 @@ jobs:
         ports:
           - 5984:5984
         options: >-
-          --health-cmd 'curl --fail http://localhost:5984/_up'
+          --health-cmd "curl --fail http://localhost:5984/_up"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
