@@ -37,6 +37,7 @@ No arbitrary remote URL fetch or second file storage protocol.
 
 | Date | Change | Author or actor | Evidence |
 |------+--------+-----------------+----------|
+| 2026-10-10 | Record full real-model HTTP/Rabbit/CouchDB integration proof | Codex | 79-test run with no skips |
 | 2026-10-10 | Define core incoming image and candidate pipeline | Codex | User instruction and observed repositories |
 
 * IMPLEMENTED RAGE Execution Record
@@ -68,3 +69,22 @@ Implement pinned YuNet/SFace extraction, a durable core Picture gallery and cand
 ** Notes
 - No automatic identity confirmation; explicit review is required. Model execution is not an accuracy benchmark.
 - Real HTTP/Rabbit worker roundtrip validation pending fixture startup; test exists and is opt-in.
+
+* Final Integration Evidence
+
+2026-10-10: The full unittest discovery run passed 79 tests with no skips,
+using pinned YuNet and SFace models, a disposable real StarIntel Server HTTP
+fixture, RabbitMQ and CouchDB. The live worker replayed a committed core Picture
+event over Rabbit, extracted and aligned a face with real models, exported core
+Picture/Person/Relation records, verified remote crop bytes and acknowledged
+only after delivery. Separate live Couch tests verified durable gallery matches,
+completed run replay and confirmed Relation preservation across actor restart.
+This supersedes the initial execution record's pending integration note.
+Server binary transport tests separately cover File, Image and Picture over
+actual HTTP/Rabbit, including metadata-first attachment delivery. Inference
+execution evidence does not establish recognition accuracy.
+
+Local validation also passed core pin verification, Ruff lint and format checks,
+script compilation, wheel build, diff whitespace checks, sync/check and document
+validation. The wheel contains the worker, pipeline and detector modules and
+the worker CLI; no custom schema package or model weights are bundled.
