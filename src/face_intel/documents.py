@@ -12,7 +12,7 @@ from .contracts.starintel_types import Person, Picture, Relation
 from .errors import InvalidDocument
 from .spec import VERSION, reference, validate
 
-LINK_PREDICATE = "org.starintel.face-intel/annotated-person@1"
+LINK_PREDICATE = "org.starintel/core@1/related-to"
 
 
 def normalize_name(value: str) -> str:
@@ -20,7 +20,10 @@ def normalize_name(value: str) -> str:
 
 
 def prepare_person(document: dict, dataset: str) -> Person:
-    validate(document, "person", dataset)
+    dtype = document.get("dtype") if isinstance(document, dict) else None
+    if dtype != "person":
+        raise InvalidDocument("Expected core Person")
+    validate(document, dtype, dataset)
     result = deepcopy(document)
     values = [result.get("fullName", ""), result.get("displayName", "")]
     values.append(" ".join(result.get(k, "") for k in ("fname", "mname", "lname")))
@@ -31,7 +34,11 @@ def prepare_person(document: dict, dataset: str) -> Person:
     if not isinstance(internal, dict):
         raise InvalidDocument("extensions.faceIntel must be an object")
     internal["nameKeys"] = names
-    validate(result, "person", dataset)
+    internal["candidate"] = result.get("verificationStatus") == "candidate"
+    internal.pop("status", None)
+    if "verificationStatus" in result:
+        internal["status"] = result["verificationStatus"]
+    validate(result, dtype, dataset)
     return result
 
 
@@ -99,3 +106,70 @@ def annotated_link(picture: dict, person: dict, basis: str, dataset: str) -> Rel
     }
     validate(document, "relation", dataset)
     return document
+
+
+def prepare_relation(document: dict, endpoints: dict, dataset: str) -> Relation:
+    """Apply image association rules on top of the unchanged core Relation schema."""
+    validate(document, "relation", dataset)
+    result = deepcopy(document)
+    source, destination = endpoints["source"], endpoints["destination"]
+    if (
+        result["predicate"] == LINK_PREDICATE
+        and source["dtype"] == "picture"
+        and destination["dtype"] == "person"
+    ):
+        status = result.get("verificationStatus")
+        if status not in {"candidate", "confirmed", "rejected"}:
+            raise InvalidDocument(
+                "Image associations require candidate, confirmed or rejected status"
+            )
+        if status in {"confirmed", "rejected"}:
+            reviewer = result.get("verifiedBy")
+            reviewed_at = result.get("verifiedAt")
+            evidence = result.get("evidence")
+            if (
+                not isinstance(reviewer, str)
+                or not reviewer.strip()
+                or len(reviewer) > 256
+                or type(reviewed_at) is not int
+                or reviewed_at < 0
+                or not isinstance(evidence, list)
+                or not 1 <= len(evidence) <= 100
+            ):
+                raise InvalidDocument(
+                    "Reviewed image claims require verifiedBy, verifiedAt and evidence"
+                )
+        provenance = result.get("provenance", {})
+        basis = provenance.get("basis")
+        if not isinstance(basis, str) or not 1 <= len(basis.strip()) <= 2000:
+            raise InvalidDocument(
+                "Image associations require provenance.basis of 1 to 2000 characters"
+            )
+        internal = result.setdefault("extensions", {}).setdefault("faceIntel", {})
+        if not isinstance(internal, dict):
+            raise InvalidDocument("extensions.faceIntel must be an object")
+        internal["candidate"] = status == "candidate"
+        internal["status"] = status
+        region = internal.get("region")
+        if region is not None:
+            if (
+                not isinstance(region, dict)
+                or set(region) != {"x", "y", "width", "height"}
+                or any(type(region[key]) is not int for key in region)
+                or region["x"] < 0
+                or region["y"] < 0
+                or region["width"] <= 0
+                or region["height"] <= 0
+            ):
+                raise InvalidDocument("Expected a pixel rectangle with x, y, width and height")
+            if (
+                any(
+                    type(source.get(key)) is not int or source[key] <= 0
+                    for key in ("width", "height")
+                )
+                or region["x"] + region["width"] > source["width"]
+                or region["y"] + region["height"] > source["height"]
+            ):
+                raise InvalidDocument("Image association rectangle exceeds the Picture dimensions")
+    validate(result, "relation", dataset)
+    return result

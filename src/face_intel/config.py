@@ -16,8 +16,29 @@ class Settings:
     max_photo_pixels: int = 20_000_000
     request_timeout: float = 30.0
     couch_timeout: float = 5.0
+    sface_model_path: str = ""
+    sface_model_sha256: str = ""
+    yunet_model_path: str = ""
+    yunet_model_sha256: str = ""
+    auto_process_images: bool = False
+    max_detected_faces: int = 32
+    max_gallery_candidates: int = 1000
 
     def __post_init__(self) -> None:
+        if bool(self.yunet_model_path) != bool(self.yunet_model_sha256):
+            raise ValueError("Set both FACE_INTEL_YUNET_MODEL and FACE_INTEL_YUNET_SHA256")
+        if self.yunet_model_sha256 and not re.fullmatch(r"[0-9a-f]{64}", self.yunet_model_sha256):
+            raise ValueError("FACE_INTEL_YUNET_SHA256 must be a lowercase SHA-256 digest")
+        if self.yunet_model_path and not self.sface_model_path:
+            raise ValueError("YuNet extraction requires a configured SFace model")
+        if self.auto_process_images and not self.yunet_model_path:
+            raise ValueError("Automatic processing requires configured face models")
+        if not 1 <= self.max_detected_faces <= 100 or not 1 <= self.max_gallery_candidates <= 10000:
+            raise ValueError("Invalid face or gallery bound")
+        if bool(self.sface_model_path) != bool(self.sface_model_sha256):
+            raise ValueError("Set both FACE_INTEL_SFACE_MODEL and FACE_INTEL_SFACE_SHA256")
+        if self.sface_model_sha256 and not re.fullmatch(r"[0-9a-f]{64}", self.sface_model_sha256):
+            raise ValueError("FACE_INTEL_SFACE_SHA256 must be a lowercase SHA-256 digest")
         url = urlsplit(self.couch_url)
         if (
             url.scheme not in {"http", "https"}
@@ -53,4 +74,9 @@ class Settings:
             couch_username=os.environ.get("COUCHDB_USERNAME", ""),
             couch_password=os.environ.get("COUCHDB_PASSWORD", ""),
             dataset=os.environ.get("FACE_INTEL_DATASET", "face-intel"),
+            sface_model_path=os.environ.get("FACE_INTEL_SFACE_MODEL", ""),
+            sface_model_sha256=os.environ.get("FACE_INTEL_SFACE_SHA256", ""),
+            yunet_model_path=os.environ.get("FACE_INTEL_YUNET_MODEL", ""),
+            yunet_model_sha256=os.environ.get("FACE_INTEL_YUNET_SHA256", ""),
+            auto_process_images=os.environ.get("FACE_INTEL_AUTO_PROCESS_IMAGES", "0") == "1",
         )

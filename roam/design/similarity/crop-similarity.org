@@ -1,0 +1,68 @@
+:PROPERTIES:
+:ID: face-intel-crop-similarity-20261010
+:END:
+#+title: Similarity of supplied aligned face crops
+#+description: Model-backed bounded crop comparison and candidate ranking independent of detection.
+#+status: IMPLEMENTED
+#+filetags: :face-intel:design:similarity:
+
+* Observed State and Scope
+PR 2 (7f96b456) supplies face observations and candidate records, but no embeddings.
+User requested implementation of the facial similarity engine while another agent
+works on cropping. This branch builds on PR 2 without modifying its contract pin.
+The crop interface accepts stored Picture IDs for already aligned 112x112 RGB
+faces. Detection and landmark alignment remain the crop producer's responsibility.
+OpenCV SFace is the initial backend; a narrow embedding interface permits replacement.
+
+* Execution and Evaluation
+A dedicated bounded actor owns the model. Model bytes must match an explicit SHA-256.
+No automatic download or generated schema edit. Optional configuration advertises
+comparison and ranking only when enabled. HTTP and Target share commands. Candidate
+lists contain at most 100 distinct crop IDs; rank limit at most 100. Check propagated
+deadlines between reads and inference calls. Return cosine scores in [-1,1], model
+identity, and typed crop references; never label scores as probabilities or confirmed
+identity. No Person mutation, automatic linking, embedding persistence, global scan,
+or threshold-based identity decision is in this slice.
+Regression checks cover scoring, ranking, actor ownership, auth, disabled mode,
+invalid vectors/images, deadlines, and HTTP/Target parity. A real pinned model smoke
+test checks inference; recognition accuracy requires separate representative data.
+
+* Approval Table
+
+| Approval area | Required authority | State | Evidence required | Evidence reference |
+|---------------+--------------------+-------+-------------------+--------------------|
+| Engine implementation | Repository owner | APPROVED | Direct implementation instruction | User request in this session, 2026-10-10 |
+| Merge or deployment | Repository owner | NOT STARTED | Release instruction | Reviewable local branch only |
+
+* Changelog
+
+| Date | Change | Author or actor | Evidence |
+|------+--------+-----------------+----------|
+| 2026-10-10 | Define independent crop similarity slice | Codex | Repository source and user instruction |
+
+* IMPLEMENTED RAGE Execution Record
+:PROPERTIES:
+:STATUS_EVENT_ID: 6e48f236-3c33-4887-8210-5d49977a39eb
+:RECORDED_AT: 2026-10-10T17:09:18+00:00
+:END:
+
+** Summary
+Implement pinned OpenCV SFace crop embeddings and bounded cosine ranking through HTTP and Target dispatch.
+
+** Files
+- src/face_intel/similarity.py
+- src/face_intel/actors.py
+- src/face_intel/api.py
+- tests/test_similarity.py
+
+** Tests
+- 59 tests run: 58 passed, 1 opt-in real CouchDB test skipped; real SFace inference and actor HTTP integration executed.
+- Contract pin checks, lint, format, script compilation, and wheel/sdist build passed.
+
+** Commits
+- None
+
+** Notes
+- Native inference is not interruptible; propagated deadlines prevent subsequent inference after expiry.
+- Recognition accuracy and score calibration remain unmeasured; supplied aligned crops are required.
+- Builds on unmerged face-intel PR 2 at 7f96b456; no merge or deployment.

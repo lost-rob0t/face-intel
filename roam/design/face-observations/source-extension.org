@@ -1,0 +1,82 @@
+:PROPERTIES:
+:ID: face-intel-source-extension-20261004
+:END:
+#+title: Source-generated face observation and candidate records
+#+description: Consume the additive Star Language library for supplied observations and explicit candidate annotations.
+#+status: SUPERSEDED
+#+filetags: :face-intel:design:contracts:
+
+* Superseded by Core-Only Records
+
+The user replaced this design with [[id:face-intel-core-only-20261010][core-only records]]
+on 2026-10-10. Its execution record remains historical evidence. The current
+service no longer consumes or accepts this extension.
+
+* Scope
+
+Publish org.starintel/face-intel@1 in Star Language, importing core 0.10.1 by
+exact source digest. Consume generated schema and Python types without editing
+generated files. Store supplied FaceObservation, CandidatePerson, and
+FacePersonCandidate records through bounded Pykka actors and CouchDB.
+HTTP and Target dispatch share the same actor operations.
+
+This slice stores explicit image-region annotations and candidate claims.
+It does not implement face detection, embeddings, or biometric matching.
+Candidate records keep verificationStatus and candidateStatus equal to candidate;
+annotation writes do not modify identity fields. Image rectangles and typed
+references are checked against stored records before writing.
+
+* Execution Gate
+
+The user instructed on 2026-10-04: “Keep working at it. Make it a star language
+source spec extension”. This authorizes the source extension and its consumer.
+Prepare reviewable PRs; merging and live deployment remain separate actions.
+
+* Acceptance
+
+- Source generates schema, manifests, and supported language bindings.
+- Immutable pins verify source, artifact, import digest, and release lock.
+- Both candidate document types reject confirmed status.
+- Supplied observation IDs survive store/app restart.
+- Missing images, incorrect reference libraries, and out-of-bounds rectangles fail.
+- HTTP and Targets use the same actor boundary; repeated annotations are idempotent.
+- Existing Person/Picture/Relation operations and RAGE validation remain passing.
+
+* Approval Table
+
+| Approval area | Required authority | State | Evidence required | Evidence reference |
+|---------------+--------------------+-------+-------------------+--------------------|
+| Source extension and consumer implementation | Repository owner | APPROVED | Explicit instruction | User message, 2026-10-04, quoted above |
+| Merge and deployment | Repository owner | NOT STARTED | Separate release instruction | Reviewable PRs |
+
+* Changelog
+
+| Date | Change | Author or actor | Evidence |
+|------+--------+-----------------+----------|
+| 2026-10-04 | Define additive source extension and actor storage scope | Codex | User request and current source |
+
+* IMPLEMENTED RAGE Execution Record
+:PROPERTIES:
+:STATUS_EVENT_ID: 5867ac5b-e215-483e-8b85-e2beca5f8b59
+:RECORDED_AT: 2026-10-04T11:04:10-07:00
+:END:
+
+** Summary
+Consume the Star Language FaceIntel extension for supplied face observations, candidate Persons, and explicit candidate Relations through bounded Pykka actors, HTTP, Targets, and CouchDB.
+
+** Files
+- src/face_intel
+- tests/test_faces.py
+- tests/test_live_couch.py
+- README.org
+
+** Tests
+- 46 unit tests: 45 passed, one opt-in live CouchDB test skipped locally
+- ruff lint/format, script compilation, source/extension pins, wheel contents, and RAGE checks passed
+
+** Commits
+- None
+
+** Notes
+- Real CouchDB face/candidate restart assertions run in the PR integration job; no local integration success is claimed.
+- Source prerequisite: star-lang PR 201; cf7dbd357aeb557ed97435e3c06f1b7d367dbf50; CI and Nix passed.

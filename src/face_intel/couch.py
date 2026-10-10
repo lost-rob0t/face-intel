@@ -13,16 +13,27 @@ from .errors import Conflict, NotFound, StorageUnavailable
 from .spec import validate
 
 VIEW_NAMES = """function(doc) {
-  if (doc.dtype !== 'person' || doc.deleted || !doc.extensions) return;
+  if (doc.dtype !== 'person') return;
+  if (doc.deleted || !doc.extensions) return;
   var state = doc.extensions.faceIntel;
   if (!state || !Array.isArray(state.nameKeys)) return;
   state.nameKeys.forEach(function(name) { emit([doc.dataset, name], null); });
 }"""
 VIEW_LINKS = """function(doc) {
   if (doc.dtype !== 'relation' || doc.deleted || !doc.destination) return;
-  if (doc.predicate !== 'LINK_PREDICATE') return;
+  if (doc.predicate !== 'LINK_PREDICATE' || !doc.source) return;
+  if (doc.source.schema !== 'org.starintel/core@1/picture' ||
+      doc.destination.schema !== 'org.starintel/core@1/person') return;
   emit([doc.dataset, doc.destination.id], null);
 }""".replace("LINK_PREDICATE", LINK_PREDICATE)
+
+VIEW_PICTURE_PEOPLE = VIEW_LINKS.replace("doc.destination.id", "doc.source.id")
+VIEW_FACE_GALLERY = """function(doc) {
+  if (doc.dtype !== 'picture' || doc.deleted || !doc.extensions) return;
+  var face = doc.extensions.faceIntel;
+  if (!face || !face.faceCrop || !face.embeddings) return;
+  Object.keys(face.embeddings).forEach(function(model) { emit([doc.dataset, model], null); });
+}"""
 
 
 def public_document(raw: dict) -> dict:
@@ -75,18 +86,28 @@ class CouchStore:
         if response.status_code not in {201, 202, 412}:
             raise StorageUnavailable("Unable to initialize CouchDB database")
         path = f"{self.database}/_design/face-intel"
-        views = {"by_name": {"map": VIEW_NAMES}, "photo_links": {"map": VIEW_LINKS}}
+        views = {
+            "by_name": {"map": VIEW_NAMES},
+            "photo_links": {"map": VIEW_LINKS},
+            "picture_people": {"map": VIEW_PICTURE_PEOPLE},
+            "face_gallery": {"map": VIEW_FACE_GALLERY},
+        }
         for _ in range(3):
             try:
                 current = self.request("GET", path).json()
             except NotFound:
                 current = {"_id": "_design/face-intel"}
-            if all(current.get("views", {}).get(name) == value for name, value in views.items()):
+            if "face_candidates" not in current.get("views", {}) and all(
+                current.get("views", {}).get(name) == value for name, value in views.items()
+            ):
                 return
             desired = {
                 **current,
                 "language": "javascript",
-                "views": {**current.get("views", {}), **views},
+                "views": {
+                    **{k: v for k, v in current.get("views", {}).items() if k != "face_candidates"},
+                    **views,
+                },
             }
             try:
                 self.request("PUT", path, json=desired)
@@ -104,6 +125,8 @@ class CouchStore:
 
     def get(self, identifier: str, dtype: str) -> dict:
         document = public_document(self.raw_get(identifier))
+        if document.get("dtype") != dtype:
+            raise NotFound("Record has a different document type")
         validate(document, dtype, self.settings.dataset)
         return document
 
@@ -170,9 +193,15 @@ class CouchStore:
         if after and rows and rows[0]["id"] == after:
             rows = rows[1:]
         page = rows[:limit]
-        dtype = "person" if view == "by_name" else "relation"
         documents = [public_document(row["doc"]) for row in page]
         for document in documents:
+            dtype = (
+                "person"
+                if view == "by_name"
+                else "picture"
+                if view == "face_gallery"
+                else "relation"
+            )
             validate(document, dtype, self.settings.dataset)
         return {"documents": documents, "nextCursor": page[-1]["id"] if len(rows) > limit else None}
 

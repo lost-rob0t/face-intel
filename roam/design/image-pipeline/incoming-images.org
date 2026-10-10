@@ -1,0 +1,94 @@
+:PROPERTIES:
+:ID: face-intel-incoming-images-20261010
+:END:
+#+title: Incoming image extraction and candidate graph
+#+description: Core-only YuNet/SFace face extraction, durable crop gallery, candidate links and actor delivery.
+#+status: IMPLEMENTED
+#+filetags: :face-intel:design:pipeline:
+
+* Authorized Scope
+User requested file support across StarIntel Server APIs and an incoming-image
+face pipeline with extraction, Person/candidate Relation emission, matching old
+and incoming crops, and later evidence-backed confirmation by other actors.
+Core schema 0.10.1 remains sole document authority. A dedicated bounded actor
+owns pinned YuNet and SFace inference. Crops are core Pictures; tentative
+identities are unnamed core Persons and related-to Relations with candidate
+verificationStatus. Matching reuses Person records without merging identities.
+Store model-specific vectors in core Picture metadata and query a bounded,
+dataset-scoped gallery. Results expose truncation; scores are suggestions only.
+
+* Reliability and Interfaces
+HTTP and core Target process-image and register-face use the same actor.
+Optional auto-processing acts after durable image upload. Deterministic run Targets
+record completion only after graph writes; retries preserve reviewed records.
+Rabbit consumes committed picture events, skips generated crops, and acknowledges
+only after local durable processing and configured server delivery. Confirmation
+requires explicit evidence-backed updates, never repeated similarity alone.
+No arbitrary remote URL fetch or second file storage protocol.
+
+* Approval Table
+
+| Approval area | Required authority | State | Evidence required | Evidence reference |
+|---------------+--------------------+-------+-------------------+--------------------|
+| Image pipeline and integration | Repository owner | APPROVED | Explicit instruction | User message in this session, 2026-10-10 |
+| Merge or deployment | Repository owner | NOT STARTED | Release instruction | Reviewable changes only |
+
+* Changelog
+
+| Date | Change | Author or actor | Evidence |
+|------+--------+-----------------+----------|
+| 2026-10-10 | Record full real-model HTTP/Rabbit/CouchDB integration proof | Codex | 80-test run with no skips |
+| 2026-10-10 | Define core incoming image and candidate pipeline | Codex | User instruction and observed repositories |
+
+* IMPLEMENTED RAGE Execution Record
+:PROPERTIES:
+:STATUS_EVENT_ID: eb2923b0-d97b-4653-8af0-51d616ab5a67
+:RECORDED_AT: 2026-10-10T18:55:09+00:00
+:END:
+
+** Summary
+Implement pinned YuNet/SFace extraction, a durable core Picture gallery and candidate Person/Relation graph, shared HTTP/Target commands, and verified committed-image Rabbit delivery with review synchronization.
+
+** Files
+- src/face_intel/pipeline.py
+- src/face_intel/detection.py
+- src/face_intel/worker.py
+- tests/test_pipeline.py
+- tests/test_worker.py
+- tests/test_live_couch.py
+- tests/test_live_worker.py
+
+** Tests
+- Real YuNet/SFace extraction and alignment smoke passed; actual 128-dimensional vectors and core graph validated.
+- Real CouchDB pipeline gallery, completion ledger, bytes and reviewed Relations survive actor restart.
+- Worker fixtures cover delayed remote visibility, interrupted export, stale review events and missing-byte attachment repair.
+
+** Commits
+- None
+
+** Notes
+- No automatic identity confirmation; explicit review is required. Model execution is not an accuracy benchmark.
+- Real HTTP/Rabbit worker roundtrip validation pending fixture startup; test exists and is opt-in.
+
+* Final Integration Evidence
+
+2026-10-10: The full unittest discovery run passed 80 tests with no skips,
+using pinned YuNet and SFace models, a disposable real StarIntel Server HTTP
+fixture, RabbitMQ and CouchDB. The live worker replayed a committed core Picture
+event over Rabbit, extracted and aligned a face with real models, exported core
+Picture/Person/Relation records, verified remote crop bytes and acknowledged
+only after delivery. Separate live Couch tests verified durable gallery matches,
+completed run replay and confirmed Relation preservation across actor restart.
+This supersedes the initial execution record's pending integration note.
+Server binary transport tests separately cover File, Image and Picture over
+actual HTTP/Rabbit, including metadata-first attachment delivery. Inference
+execution evidence does not establish recognition accuracy.
+
+Local validation also passed core pin verification, Ruff lint and format checks,
+script compilation, wheel build, diff whitespace checks, sync/check and document
+validation. The wheel contains the worker, pipeline and detector modules and
+the worker CLI; no custom schema package or model weights are bundled.
+
+A final delivery check added recovery of remote reviews even when their broker
+notification was missed: exporting an existing Person/Relation mirrors the
+server's latest record locally. The final full run passed 80 tests with no skips.

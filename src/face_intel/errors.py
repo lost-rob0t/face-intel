@@ -12,3 +12,7 @@ class Conflict(RuntimeError):
 
 class StorageUnavailable(RuntimeError):
     """The durable store could not complete the request."""
+
+
+class SimilarityUnavailable(RuntimeError):
+    """The configured embedding engine could not complete the request."""

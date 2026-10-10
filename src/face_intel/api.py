@@ -11,7 +11,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .actors import FaceIntelSystem
 from .config import Settings
-from .errors import Conflict, InvalidDocument, NotFound, StorageUnavailable
+from .errors import Conflict, InvalidDocument, NotFound, SimilarityUnavailable, StorageUnavailable
 from .spec import VERSION
 
 
@@ -42,12 +42,16 @@ async def read_object(request: Request) -> dict:
     return result
 
 
-def create_app(settings: Settings | None = None, store=None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, store=None, embedder_factory=None, processor_factory=None
+) -> FastAPI:
     settings = settings or Settings.from_env()
 
     @asynccontextmanager
     async def lifespan(app):
-        system = await run_in_threadpool(FaceIntelSystem, settings, store)
+        system = await run_in_threadpool(
+            FaceIntelSystem, settings, store, embedder_factory, processor_factory
+        )
         app.state.system = system
         try:
             yield
@@ -80,6 +84,8 @@ def create_app(settings: Settings | None = None, store=None) -> FastAPI:
             status, detail = 409, str(error)
         elif isinstance(error, pykka.Timeout):
             status, detail = 503, "Request timed out; completion may still occur"
+        elif isinstance(error, SimilarityUnavailable):
+            status, detail = 503, "Facial similarity engine is unavailable"
         else:
             status, detail = 503, "Actor service or durable store is unavailable"
         return JSONResponse({"detail": detail}, status_code=status)
@@ -89,6 +95,7 @@ def create_app(settings: Settings | None = None, store=None) -> FastAPI:
         NotFound,
         Conflict,
         StorageUnavailable,
+        SimilarityUnavailable,
         queue.Full,
         pykka.Timeout,
         pykka.ActorDeadError,
@@ -156,5 +163,25 @@ def create_app(settings: Settings | None = None, store=None) -> FastAPI:
     @app.post("/v1/targets", dependencies=secured)
     async def target(request: Request):
         return await dispatch(request, "execute-target", await read_object(request))
+
+    @app.post("/v1/search/face-similarity", dependencies=secured)
+    async def search_similarity(request: Request):
+        return await dispatch(request, "search-similar-faces", await read_object(request))
+
+    @app.post("/v1/relations", dependencies=secured)
+    async def ingest_relation(request: Request):
+        return await dispatch(request, "ingest-relation", await read_object(request))
+
+    @app.get("/v1/relations/{identifier:path}", dependencies=secured)
+    async def get_relation(request: Request, identifier: str):
+        return await dispatch(request, "get-relation", {"id": identifier})
+
+    @app.post("/v1/images/process", dependencies=secured)
+    async def process_image(request: Request):
+        return await dispatch(request, "process-image", await read_object(request))
+
+    @app.post("/v1/faces/register", dependencies=secured)
+    async def register_face(request: Request):
+        return await dispatch(request, "register-face", await read_object(request))
 
     return app

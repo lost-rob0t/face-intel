@@ -17,10 +17,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+broker = ["pika>=1.3,<2"]
+similarity = ["opencv-python-headless>=4.13,<5"]
 dev = ["pytest>=9.1,<10", "ruff>=0.16,<0.17"]
 
 [project.scripts]
 face-intel = "face_intel.__main__:main"
+face-intel-worker = "face_intel.worker:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/face_intel"]
@@ -29,7 +32,7 @@ packages = ["src/face_intel"]
 target-version = "py312"
 line-length = 100
 extend-exclude = ["src/face_intel/contracts"]
-include = ["src/face_intel/*.py", "tests/test_service.py", "tests/test_couch.py", "tests/test_spec.py"]
+include = ["src/face_intel/*.py", "tests/test_service.py", "tests/test_couch.py", "tests/test_spec.py", "tests/test_faces.py", "tests/test_similarity.py", "tests/test_pipeline.py", "tests/test_worker.py", "tests/test_live_couch.py", "tests/test_live_worker.py", "tests/support.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]

@@ -15,6 +15,13 @@ supplied Person fields, exact names/aliases, photos, and explicit candidate anno
 
 * Next Modules
 
+[[id:face-intel-incoming-images-20261010][Incoming image extraction and candidate graph]]
+adds optional YuNet/SFace processing, a durable model-specific crop gallery,
+core Persons and candidate Relations, and committed-image Rabbit delivery.
+Other actors can explicitly review those records. The former
+[[id:face-intel-source-extension-20261004][source-generated extension design]] is
+superseded by the user's core-only instruction; no custom dtypes are consumed.
+
 | Slice | Capability | Dependency | State |
 |-------+------------+------------+-------|
 | Supplied Person fields | Add focused importers for user-provided accounts, contact records, and biography data | Canonical Person and typed references | NOT STARTED |
@@ -25,17 +32,20 @@ supplied Person fields, exact names/aliases, photos, and explicit candidate anno
 | Service plugin | Optional StarIntel-server delegation to this actor service | Stable service manifest | NOT STARTED |
 
 The repository is extensible; the foundation does not claim to handle every Person
-data capability already. There are no biometric identity or gender-inference modules.
+data capability already. Similarity proposes candidates; identity confirmation requires explicit review.
+Gender inference is not implemented.
 
 * Approval Table
 
 | Approval area | Required authority | State | Evidence required | Evidence reference |
 |---------------+--------------------+-------+-------------------+--------------------|
 | Foundation | Repository owner | APPROVED | Explicit instruction to build | User request, 2026-10-03 |
+| Core image pipeline and Rabbit worker | Repository owner | APPROVED | Explicit instruction | User request, 2026-10-10 |
 | Later module implementation | Repository owner | NOT STARTED | Scope and acceptance evidence for the chosen slice | This roadmap lists future work only |
 
 * Changelog
 
 | Date | Change | Author or actor | Evidence |
 |------+--------+-----------------+----------|
+| 2026-10-10 | Record implemented core image pipeline and superseded extension design | Codex | Pipeline source and tests |
 | 2026-10-03 | Establish extensible Person data roadmap | Codex | User requested future Person data expansion |

@@ -14,6 +14,8 @@ AUTHORITY = "org.starintel/core@1"
 TYPES = {
     "person": "Person",
     "picture": "Picture",
+    "image": "Image",
+    "file": "File",
     "relation": "Relation",
     "target": "Target",
     "actor-manifest": "ActorManifest",
