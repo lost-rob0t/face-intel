@@ -332,7 +332,8 @@ queue/exchange. Run under a supervisor to restart after broker disconnection.
 The worker also consumes =documents.updated.person= and
 =documents.updated.relation= to mirror reviews of its local graph. It fetches
 latest state to handle stale events; replay/export does not overwrite remote
-reviews. It does not subscribe to server Target dispatch because that transport
+reviews. Redelivery also mirrors the server's current graph records, recovering
+reviews whose notification was missed. It does not subscribe to server Target dispatch because that transport
 currently lacks a canonical remote completion protocol; local HTTP and core
 Target operations are supported.
 

@@ -209,11 +209,14 @@ class ImageWorker:
                 return None  # A generic non-image file is outside this worker's capability.
             raise
         result = self.system.request("process-image", {"photoId": original["id"]})
-        for output in result["documents"]:
+        for index, output in enumerate(result["documents"]):
             binary = None
             if output["dtype"] == "picture":
                 binary, _ = self.system.request("photo-bytes", {"id": output["id"]})
-            self.server.publish(output, binary)
+            persisted = self.server.publish(output, binary)
+            if output["dtype"] in {"person", "relation"}:
+                # Also recover reviews whose notification was missed.
+                result["documents"][index] = self.sync_review(persisted)
         return result
 
     def sync_review(self, document):

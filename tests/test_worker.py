@@ -141,6 +141,24 @@ class WorkerTests(unittest.TestCase):
         self.delivery()
         self.assertEqual(self.remote.documents[claim["id"]]["verificationStatus"], "confirmed")
 
+    def test_redelivery_recovers_remote_review_without_a_review_notification(self):
+        result = self.delivery()
+        claim = next(
+            d
+            for d in result["documents"]
+            if d.get("verificationStatus") == "candidate" and d["dtype"] == "relation"
+        )
+        remote = self.remote.documents[claim["id"]]
+        remote.update(
+            verificationStatus="confirmed",
+            verifiedBy="actor:review",
+            verifiedAt=1791648000,
+            rev="2-remote",
+        )
+        self.delivery()  # No documents.updated.relation notification was delivered.
+        self.assertEqual(self.store.documents[claim["id"]]["verificationStatus"], "confirmed")
+        self.assertEqual(self.remote.documents[claim["id"]]["verificationStatus"], "confirmed")
+
     def test_generic_file_image_is_processed_using_core_picture_derivative(self):
         source = deepcopy(self.remote.original)
         source["id"] = "file:incoming"
