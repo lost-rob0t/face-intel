@@ -42,12 +42,16 @@ async def read_object(request: Request) -> dict:
     return result
 
 
-def create_app(settings: Settings | None = None, store=None, embedder_factory=None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, store=None, embedder_factory=None, processor_factory=None
+) -> FastAPI:
     settings = settings or Settings.from_env()
 
     @asynccontextmanager
     async def lifespan(app):
-        system = await run_in_threadpool(FaceIntelSystem, settings, store, embedder_factory)
+        system = await run_in_threadpool(
+            FaceIntelSystem, settings, store, embedder_factory, processor_factory
+        )
         app.state.system = system
         try:
             yield
@@ -171,5 +175,13 @@ def create_app(settings: Settings | None = None, store=None, embedder_factory=No
     @app.get("/v1/relations/{identifier:path}", dependencies=secured)
     async def get_relation(request: Request, identifier: str):
         return await dispatch(request, "get-relation", {"id": identifier})
+
+    @app.post("/v1/images/process", dependencies=secured)
+    async def process_image(request: Request):
+        return await dispatch(request, "process-image", await read_object(request))
+
+    @app.post("/v1/faces/register", dependencies=secured)
+    async def register_face(request: Request):
+        return await dispatch(request, "register-face", await read_object(request))
 
     return app

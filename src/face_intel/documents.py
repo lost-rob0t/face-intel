@@ -123,6 +123,22 @@ def prepare_relation(document: dict, endpoints: dict, dataset: str) -> Relation:
             raise InvalidDocument(
                 "Image associations require candidate, confirmed or rejected status"
             )
+        if status in {"confirmed", "rejected"}:
+            reviewer = result.get("verifiedBy")
+            reviewed_at = result.get("verifiedAt")
+            evidence = result.get("evidence")
+            if (
+                not isinstance(reviewer, str)
+                or not reviewer.strip()
+                or len(reviewer) > 256
+                or type(reviewed_at) is not int
+                or reviewed_at < 0
+                or not isinstance(evidence, list)
+                or not 1 <= len(evidence) <= 100
+            ):
+                raise InvalidDocument(
+                    "Reviewed image claims require verifiedBy, verifiedAt and evidence"
+                )
         provenance = result.get("provenance", {})
         basis = provenance.get("basis")
         if not isinstance(basis, str) or not 1 <= len(basis.strip()) <= 2000:

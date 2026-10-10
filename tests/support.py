@@ -98,6 +98,24 @@ class MemoryStore:
                 and d["destination"]["schema"] == "org.starintel/core@1/person"
                 and d["destination"]["id"] == value
             ]
+        elif view == "picture_people":
+            rows = [
+                d
+                for d in self.documents.values()
+                if d["dtype"] == "relation"
+                and d["predicate"] == LINK_PREDICATE
+                and d["source"]["schema"] == "org.starintel/core@1/picture"
+                and d["destination"]["schema"] == "org.starintel/core@1/person"
+                and d["source"]["id"] == value
+            ]
+        elif view == "face_gallery":
+            rows = [
+                d
+                for d in self.documents.values()
+                if d["dtype"] == "picture"
+                and d.get("extensions", {}).get("faceIntel", {}).get("faceCrop")
+                and value in d["extensions"]["faceIntel"].get("embeddings", {})
+            ]
         else:
             raise AssertionError("Unknown test view")
         rows = sorted((d for d in rows if not d.get("deleted")), key=lambda d: d["id"])

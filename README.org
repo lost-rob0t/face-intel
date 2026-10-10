@@ -2,7 +2,7 @@
 :ID: face-intel-readme-20261003
 :END:
 #+title: face-intel
-#+description: Actor-owned StarIntel Person records, photos, and explicit candidate annotations backed by CouchDB.
+#+description: Core-only StarIntel face extraction, durable similarity gallery and explicitly reviewed candidate graph.
 #+status: FOUNDATION
 #+filetags: :face-intel:documentation:
 
@@ -13,9 +13,9 @@ Person records, photo ingestion, core candidate Person records, explicit image-t
 exact normalized name/alias search, and canonical Target dispatch. CouchDB stores
 canonical documents and original images. The service owns its HTTP interface.
 
-This foundation implements record management and explicit annotations. It supports optional supplied-crop similarity (see below), but does
-not implement automatic identity matching, face-to-name identification, inferred gender,
-or automatic person enrichment. Later Person data modules have a separate roadmap
+The optional YuNet/SFace pipeline extracts faces and proposes candidate links
+as images arrive. Confirmation is an explicit review by another actor or a human.
+It does not infer names, gender, or other identity attributes from images. Later Person data modules have a separate roadmap
 in =roam/indexes/person-data-roadmap.org=.
 
 * Run
@@ -78,8 +78,8 @@ associations. These are application rules on the core string field.
 
 =POST /v1/links/photo-person= creates an idempotent candidate Relation. To confirm
 or reject it, =POST /v1/relations= with the returned document, its current =rev=,
-updated =verificationStatus=, and evidence in =provenance=. Core =verifiedBy= and
-=verifiedAt= can carry reviewer and review time. An actual edit without =rev= or
+updated =verificationStatus=, a nonempty =evidence= reference list,
+=provenance.basis=, =verifiedBy= reviewer, and integer Unix =verifiedAt= review time. An actual edit without =rev= or
 with a stale =rev= fails with 409; an identical retry remains idempotent. The
 Person and Relation are separate claims: confirming one does not confirm the
 other. =extensions.faceIntel.candidate= and =status= are derived convenience
@@ -94,10 +94,12 @@ can use a core =derived-from= Relation to the original Picture; the inherited
 core File fields also provide =parentFile= and =derivedFiles=.
 
 Core 0.10.1 defines =File=, =Image= extending File, and =Picture= extending Image.
-This service's binary transport currently handles Pictures; it does not advertise
-a general arbitrary-file upload API or assume star-server supports one.
-The Relation transport accepts existing Person and Picture endpoints; other core
-endpoint kinds are not supported by this service's storage operations.
+HTTP photo upload handles Pictures. The Rabbit worker also imports core Files
+and Images whose bytes are images, retaining the source document and deriving
+a core Picture with =parentFile=. Relation endpoints accept locally stored
+Persons, Pictures, Images and Files. StarIntel Server supplies binary ingress
+=POST /api/v1/files= and download =GET /api/v1/files/<id>/content=; metadata
+continues through its generic document APIs.
 
 The former =face-observation=, =candidate-person=, and =face-person-candidate=
 dtypes and their HTTP/Target operations have been removed. Existing custom-type
@@ -124,6 +126,9 @@ as explicitly injected test fixtures.
 | GET | /v1/photo-bytes/<id> | Original image bytes |
 | POST | /v1/links/photo-person | photoId, personId, basis |
 | POST | /v1/targets | Canonical Target; same actor operations |
+| POST | /v1/images/process | photoId, optional minScore and limit |
+| POST | /v1/faces/register | aligned photoId, personId, basis |
+| POST | /v1/search/face-similarity | queryPhotoId, candidatePhotoIds, limit |
 | POST | /v1/relations | Create or revision-check an update to a core Relation |
 | GET | /v1/relations/<id> | Core Relation |
 
@@ -168,6 +173,9 @@ Targets address =actor: face-intel=. =options= is a JSON object. Operations:
 
 | Operation | target | Additional options | Output documents |
 |-----------+--------+--------------------+------------------|
+| process-image | Picture ID | minScore, limit | Original, crops, derivations, Persons and candidate Relations |
+| register-face | Aligned Picture ID | personId, basis | Picture, Person and candidate Relation |
+| search-similar-faces | Aligned Picture ID | candidatePhotoIds, limit | Similarity metadata |
 | search-name | Name or alias | limit, after | Person page |
 | get-person | Person ID | limit, after | Person, Picture, Relation page |
 | get-photo | Picture ID | None | Picture |
@@ -198,7 +206,8 @@ The optional similarity engine consumes stored Pictures containing single,
 already aligned 112x112 face crops. The crop producer must perform detection,
 landmark alignment, and EXIF normalization before uploading through =POST
 /v1/photos=. Resizing a bounding box alone does not establish SFace alignment.
-This engine does not crop source photographs or scan all stored people.
+This supplied-list endpoint is read-only. The incoming-image pipeline below
+performs detection, alignment, and a bounded durable gallery search.
 
 Install =uv sync --frozen --extra similarity= and configure both
 =FACE_INTEL_SFACE_MODEL= (local ONNX path) and =FACE_INTEL_SFACE_SHA256= (lowercase
@@ -235,7 +244,8 @@ fails the entire request. No partial ranking is returned.
 
 Cosine scores are not probabilities or identity confirmation. No default identity
 threshold is applied. The engine does not modify Persons, candidate annotations,
-or relations, and does not persist or expose embeddings. Model changes produce
+or relations. The separate pipeline persists model-specific vectors on crop
+Pictures in core =extensions= metadata; restrict database and API access accordingly. Model changes produce
 different model IDs and require separate calibration on representative data.
 
 The same operation runs via =POST /v1/targets=: set =target= to the query Picture
@@ -256,6 +266,81 @@ for a deterministic color/spatial fixture. It checks inference and preprocessing
 not recognition accuracy. Without a model it is explicitly skipped. The actor
 checks deadlines between reads and inference calls; an already-running native
 inference cannot be interrupted, but expired work starts no further model calls.
+
+* Incoming Images and Candidate Lifecycle
+
+Install =uv sync --frozen --extra similarity --extra broker=. Configure the SFace
+model above plus =FACE_INTEL_YUNET_MODEL= and =FACE_INTEL_YUNET_SHA256=:
+- Detector: OpenCV Zoo commit =47534e27c9851bb1128ccc0102f1145e27f23f98=,
+  =models/face_detection_yunet/face_detection_yunet_2023mar.onnx=.
+- SHA-256: =8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4=.
+- [[https://media.githubusercontent.com/media/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet/face_detection_yunet_2023mar.onnx][Pinned YuNet model]], verified before loading; no runtime download.
+
+=POST /v1/images/process= with ={"photoId": "picture:..."}= detects faces,
+aligns 112x112 crops using five landmarks, and embeds them with SFace. Crops are
+core Pictures with model-specific vectors, detector provenance and a core
+=derived-from= Relation to the original. A matching gallery crop can suggest
+its linked Person; otherwise the pipeline creates an unnamed candidate core
+Person. Each suggested crop-to-Person Relation remains =candidate=, including
+suggestions involving an already confirmed Person. Multiple plausible Persons
+remain separate claims; the service does not merge them.
+
+=POST /v1/faces/register= associates an existing aligned 112x112 crop with a
+supplied Person for gallery matching. It requires =photoId=, =personId= and
+=basis= and creates a candidate link. Review that link explicitly when warranted.
+The gallery includes candidate and confirmed links, skips rejected claims and
+rejected Persons, and partitions vectors by model ID and dataset.
+
+The processing =minScore= defaults to 0.5 (allowed -1 through 1) and =limit= to
+5 (allowed 1 through 20). This is an operating cutoff for suggestions, not a
+calibrated identity threshold. Detection is bounded to 32 faces per image and
+search to 1,000 gallery crops by default. =galleryTruncated= reports when the
+bounded gallery omits crops. Detection downsizes large images for inference.
+Inputs must already have EXIF orientation normalized and contain a single frame.
+Repeated matches never promote a Person or Relation to confirmed automatically.
+Other actors submit explicit review updates with evidence, reviewer and timestamp;
+Person identity and each image association can be reviewed independently.
+
+Set =FACE_INTEL_AUTO_PROCESS_IMAGES=1 to process after HTTP image upload. The
+original bytes are committed first. On a processing failure, retry processing
+using the returned/deterministic Picture ID. Processing writes a deterministic
+core Target completion ledger after graph writes; completed runs replay current
+records, preserving later reviews, across restarts. Partial writes recover using
+deterministic IDs. The graph is multiple CouchDB writes, so an interrupted run
+may leave partial records and retries can observe a changed gallery.
+
+For continuous StarIntel Server delivery, configure =STARINTEL_SERVER_URL=,
+=STARINTEL_SERVER_TOKEN=, =FACE_INTEL_RABBIT_URL= and optionally
+=FACE_INTEL_RABBIT_QUEUE= (default =face-intel.images=), then run:
+
+#+begin_src sh
+uv run --frozen --extra similarity --extra broker face-intel-worker
+#+end_src
+
+The worker consumes committed =documents.new.picture=, =documents.new.image=
+and =documents.new.file= events, plus their =documents.updated.*= counterparts
+for metadata-first attachment delivery, on the durable =documents= topic exchange.
+It fetches current canonical metadata and bytes from the server, checks SHA-256
+and size, stores the source locally, processes it, and exports graph records and
+crop bytes back to the server. Server binary uploads are capped at 8 MiB;
+use that lower limit for incoming server files. Generated crops are skipped to
+prevent recursion. Non-image Files are outside the worker's capability.
+
+Acknowledgment happens after local persistence and remote document visibility.
+Temporary failures requeue; invalid input goes to the owned queue's =.dead=
+queue/exchange. Run under a supervisor to restart after broker disconnection.
+The worker also consumes =documents.updated.person= and
+=documents.updated.relation= to mirror reviews of its local graph. It fetches
+latest state to handle stale events; replay/export does not overwrite remote
+reviews. It does not subscribe to server Target dispatch because that transport
+currently lacks a canonical remote completion protocol; local HTTP and core
+Target operations are supported.
+
+Real model tests opt in with =FACE_INTEL_TEST_YUNET_MODEL=,
+=FACE_INTEL_TEST_YUNET_SHA256=, the SFace test variables above and
+=FACE_INTEL_TEST_FACE_IMAGE=. CI fetches a hash-checked OpenCV fixture outside the
+repository. These checks prove inference, alignment and graph generation;
+recognition accuracy and thresholds need evaluation on representative data.
 
 * Reliability and Limits
 
@@ -282,9 +367,10 @@ inference cannot be interrupted, but expired work starts no further model calls.
 
 * Actor Ownership
 
-=TargetActor= routes to =PersonActor=, =PhotoActor=, and =SimilarityActor=. Those actors send immutable
+=TargetActor= routes to =PersonActor=, =PhotoActor=, =SimilarityActor= and =PipelineActor=. Those actors send immutable
 command envelopes to =StoreActor=, which owns CouchDB state and its HTTP client.
-SimilarityActor owns optional model inference. Caller mappings are copied before mailbox transfer. Actors stop in reverse dependency
+SimilarityActor owns optional supplied-crop inference; PipelineActor owns detection,
+alignment and durable gallery processing. Caller mappings are copied before mailbox transfer. Actors stop in reverse dependency
 order and startup failures clean up only this system's actor references.
 
 To add a Person module, retain canonical generated documents and typed references,
@@ -296,8 +382,8 @@ Do not expose data-specific operations in generic StarIntel ingest by default.
 
 #+begin_src sh
 uv run --frozen --extra dev python3 scripts/check-spec.py
-uv run --frozen --extra dev python3 -m unittest discover -s tests -p 'test_*.py' -v
-uv run --frozen --extra dev ruff check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_faces.py tests/test_live_couch.py tests/support.py
+uv run --frozen --extra dev --extra broker python3 -m unittest discover -s tests -p 'test_*.py' -v
+uv run --frozen --extra dev ruff check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_faces.py tests/test_live_couch.py tests/test_pipeline.py tests/test_worker.py tests/test_live_worker.py tests/support.py
 python3 scripts/sync.py
 python3 scripts/sync.py --check
 python3 scripts/validate-docs.py
@@ -309,6 +395,15 @@ actor/app restart. To run that test locally
 against an existing server, provide credentials in the environment and set
 =FACE_INTEL_RUN_LIVE_COUCH=1=. It creates and deletes its own unique test database.
 Without that opt-in the live test is skipped; a skip is not a passing integration test.
+
+The full worker transport test requires disposable StarIntel Server, RabbitMQ and
+CouchDB fixtures. Set =FACE_INTEL_RUN_LIVE_WORKER=1, the worker/server environment
+variables above, and the CouchDB credentials, then run =test_live_worker.py=. It
+replays a committed document over the actual broker and verifies remote graph
+records and downloaded crop bytes. With the model test variables configured it
+uses real YuNet/SFace; otherwise it injects a deterministic detector fixture. It
+cleans its local database and owned broker queues; remote fixture documents
+remain in the disposable server database. Do not point it at a production dataset.
 
 * RAGE
 
@@ -325,12 +420,14 @@ existing =scripts/implement.py= and =scripts/mark-design.py= workflow.
 | Foundation implementation and local pin | Repository owner | APPROVED | Explicit instruction | User messages, 2026-10-03 |
 | Face source extension and consumer | Repository owner | SUPERSEDED | Later core-only instruction | User message, 2026-10-10 |
 | Core-only records and associations | Repository owner | APPROVED | Explicit instruction | User message, 2026-10-10 |
+| Incoming-image pipeline and worker | Repository owner | APPROVED | Explicit instruction | User message, 2026-10-10 |
 | Deployment or merge | Repository owner | NOT STARTED | Separate release instruction | Reviewable PR only |
 
 * Changelog
 
 | Date | Change | Author or actor | Evidence |
 |------+--------+-----------------+----------|
+| 2026-10-10 | Add core extraction, durable matching gallery and committed-image Rabbit worker | Codex | Pipeline, worker and real-model/CouchDB tests |
 | 2026-10-10 | Remove custom face contract and document core association lifecycle | Codex | Core-only source and regression tests |
 | 2026-10-10 | Document optional crop similarity and pinned model configuration | Codex | Similarity source and regression tests |
 | 2026-10-03 | Replace template landing page with executable foundation guide | Codex | Source, regression tests, and pinned generated contract |

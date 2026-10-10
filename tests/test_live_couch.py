@@ -7,6 +7,7 @@ import uuid
 import httpx
 from fastapi.testclient import TestClient
 from support import TOKEN, candidate_person, person, photo_bytes
+from test_pipeline import FixtureProcessor, colored_image
 
 from face_intel.api import create_app
 from face_intel.config import Settings
@@ -17,6 +18,72 @@ from face_intel.config import Settings
     "Set FACE_INTEL_RUN_LIVE_COUCH=1 to test against real CouchDB",
 )
 class LiveCouchTests(unittest.TestCase):
+    def test_pipeline_gallery_reviews_and_run_survive_restart(self):
+        settings = Settings(
+            api_token=TOKEN,
+            couch_url=os.environ.get("COUCHDB_URL", "http://127.0.0.1:5984"),
+            couch_username=os.environ["COUCHDB_USERNAME"],
+            couch_password=os.environ["COUCHDB_PASSWORD"],
+            couch_database="face_intel_test_" + uuid.uuid4().hex,
+        )
+        headers = {"Authorization": "Bearer " + TOKEN}
+        try:
+            with TestClient(create_app(settings, processor_factory=FixtureProcessor)) as client:
+                original = client.post(
+                    "/v1/photos", content=colored_image((255, 0, 0)), headers=headers
+                ).json()
+                response = client.post(
+                    "/v1/images/process", json={"photoId": original["id"]}, headers=headers
+                )
+                self.assertEqual(response.status_code, 200, response.text)
+                first = response.json()
+                tentative = next(d for d in first["documents"] if d["dtype"] == "person")
+                claim = next(
+                    d
+                    for d in first["documents"]
+                    if d.get("verificationStatus") == "candidate" and d["dtype"] == "relation"
+                )
+                reviewed = client.post(
+                    "/v1/relations",
+                    json={
+                        **claim,
+                        "verificationStatus": "confirmed",
+                        "verifiedBy": "actor:fixture-review",
+                        "verifiedAt": 1791648000,
+                    },
+                    headers=headers,
+                )
+                self.assertEqual(reviewed.status_code, 200, reviewed.text)
+            with TestClient(create_app(settings, processor_factory=FixtureProcessor)) as client:
+                replay = client.post(
+                    "/v1/images/process", json={"photoId": original["id"]}, headers=headers
+                )
+                self.assertEqual(replay.status_code, 200, replay.text)
+                self.assertIn(reviewed.json(), replay.json()["documents"])
+                later = client.post(
+                    "/v1/photos", content=colored_image((128, 0, 0)), headers=headers
+                ).json()
+                response = client.post(
+                    "/v1/images/process", json={"photoId": later["id"]}, headers=headers
+                )
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertIn(tentative, response.json()["documents"])
+                crop = next(
+                    d
+                    for d in response.json()["documents"]
+                    if d.get("extensions", {}).get("faceIntel", {}).get("faceCrop")
+                )
+                binary = client.get("/v1/photo-bytes/" + crop["id"], headers=headers)
+                self.assertEqual(binary.content, colored_image((128, 0, 0), (112, 112)))
+        finally:
+            with httpx.Client(
+                base_url=settings.couch_url,
+                auth=(settings.couch_username, settings.couch_password),
+                timeout=5,
+            ) as cleanup:
+                response = cleanup.delete("/" + settings.couch_database)
+                self.assertIn(response.status_code, {200, 202, 404}, response.text)
+
     def test_persisted_photo_person_annotation_search_and_target(self):
         settings = Settings(
             api_token=TOKEN,
@@ -84,7 +151,15 @@ class LiveCouchTests(unittest.TestCase):
                 candidate_link = response.json()
                 response = client.post(
                     "/v1/relations",
-                    json={**candidate_link, "verificationStatus": "confirmed"},
+                    json={
+                        **candidate_link,
+                        "verificationStatus": "confirmed",
+                        "verifiedBy": "actor:review-fixture",
+                        "verifiedAt": 1791648000,
+                        "evidence": [
+                            {"schema": "org.starintel/core@1/picture", "id": picture["id"]}
+                        ],
+                    },
                     headers=headers,
                 )
                 self.assertEqual(response.status_code, 200, response.text)

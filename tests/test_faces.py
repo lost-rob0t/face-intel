@@ -85,6 +85,9 @@ class FaceTests(unittest.TestCase):
         updated = {
             **relation,
             "verificationStatus": "confirmed",
+            "verifiedBy": "actor:review-fixture",
+            "verifiedAt": 1791648000,
+            "evidence": [reference(picture)],
             "provenance": {
                 "method": "review",
                 "basis": "Supplied confirmation evidence",
@@ -116,6 +119,23 @@ class FaceTests(unittest.TestCase):
         rejected = self.post("/v1/relations", {**confirmed, "verificationStatus": "rejected"})
         self.assertEqual(rejected.status_code, 200, rejected.text)
         self.assertFalse(rejected.json()["extensions"]["faceIntel"]["candidate"])
+
+    def test_review_requires_evidence_reviewer_and_timestamp(self):
+        picture, _, relation = self.seed()
+        reviewed = {
+            **relation,
+            "verificationStatus": "confirmed",
+            "verifiedBy": "actor:review",
+            "verifiedAt": 1791648000,
+            "evidence": [reference(picture)],
+        }
+        for key in ("verifiedBy", "verifiedAt", "evidence"):
+            invalid = {k: v for k, v in reviewed.items() if k != key}
+            writes = self.store.writes
+            with self.subTest(missing=key):
+                response = self.post("/v1/relations", invalid)
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertEqual(self.store.writes, writes)
 
     def test_person_confirmation_does_not_confirm_image_association(self):
         _, record, relation = self.seed()
@@ -171,7 +191,7 @@ class FaceTests(unittest.TestCase):
         for ref, status in [
             ({"schema": "org.starintel/core@1/person", "id": "person:missing"}, 404),
             ({"schema": "org.starintel/face-intel@1/candidate-person", "id": "x"}, 422),
-            ({"schema": "org.starintel/core@1/file", "id": "x"}, 422),
+            ({"schema": "org.starintel/core@1/file", "id": "x"}, 404),
         ]:
             self.assertEqual(
                 self.post("/v1/relations", {**relation, "destination": ref}).status_code, status

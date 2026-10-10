@@ -27,6 +27,14 @@ VIEW_LINKS = """function(doc) {
   emit([doc.dataset, doc.destination.id], null);
 }""".replace("LINK_PREDICATE", LINK_PREDICATE)
 
+VIEW_PICTURE_PEOPLE = VIEW_LINKS.replace("doc.destination.id", "doc.source.id")
+VIEW_FACE_GALLERY = """function(doc) {
+  if (doc.dtype !== 'picture' || doc.deleted || !doc.extensions) return;
+  var face = doc.extensions.faceIntel;
+  if (!face || !face.faceCrop || !face.embeddings) return;
+  Object.keys(face.embeddings).forEach(function(model) { emit([doc.dataset, model], null); });
+}"""
+
 
 def public_document(raw: dict) -> dict:
     result = {key: deepcopy(value) for key, value in raw.items() if not key.startswith("_")}
@@ -81,6 +89,8 @@ class CouchStore:
         views = {
             "by_name": {"map": VIEW_NAMES},
             "photo_links": {"map": VIEW_LINKS},
+            "picture_people": {"map": VIEW_PICTURE_PEOPLE},
+            "face_gallery": {"map": VIEW_FACE_GALLERY},
         }
         for _ in range(3):
             try:
@@ -185,7 +195,13 @@ class CouchStore:
         page = rows[:limit]
         documents = [public_document(row["doc"]) for row in page]
         for document in documents:
-            dtype = "person" if view == "by_name" else "relation"
+            dtype = (
+                "person"
+                if view == "by_name"
+                else "picture"
+                if view == "face_gallery"
+                else "relation"
+            )
             validate(document, dtype, self.settings.dataset)
         return {"documents": documents, "nextCursor": page[-1]["id"] if len(rows) > limit else None}
 

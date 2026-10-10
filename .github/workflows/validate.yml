@@ -11,6 +11,9 @@ jobs:
   sface-inference:
     runs-on: ubuntu-latest
     env:
+      FACE_INTEL_TEST_YUNET_MODEL: /tmp/face-intel-yunet.onnx
+      FACE_INTEL_TEST_YUNET_SHA256: 8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4
+      FACE_INTEL_TEST_FACE_IMAGE: /tmp/face-intel-fixture.jpg
       FACE_INTEL_TEST_SFACE_MODEL: /tmp/face-intel-sface.onnx
       FACE_INTEL_TEST_SFACE_SHA256: 0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79
     steps:
@@ -27,6 +30,12 @@ jobs:
           curl --fail --location --retry 3
           https://media.githubusercontent.com/media/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_recognition_sface/face_recognition_sface_2021dec.onnx
           --output "$FACE_INTEL_TEST_SFACE_MODEL"
+      - name: Fetch pinned detector and inference fixture
+        run: |
+          curl --fail --location --retry 3 https://media.githubusercontent.com/media/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet/face_detection_yunet_2023mar.onnx --output "$FACE_INTEL_TEST_YUNET_MODEL"
+          curl --fail --location --retry 3 https://raw.githubusercontent.com/opencv/opencv/4.13.0/samples/data/lena.jpg --output "$FACE_INTEL_TEST_FACE_IMAGE"
+      - name: Verify real extraction and graph generation
+        run: uv run --frozen --extra dev --extra similarity python3 -m unittest discover -s tests -p 'test_pipeline.py' -v
       - name: Verify real inference and actor integration
         run: uv run --frozen --extra dev --extra similarity python3 -m unittest discover -s tests -p 'test_similarity.py' -v
 
@@ -40,17 +49,17 @@ jobs:
       - name: Install locked service dependencies
         run: |
           python3 -m pip install uv==0.12.19
-          uv sync --frozen --extra dev
+          uv sync --frozen --extra dev --extra broker
       - name: Verify local Star Language pin
         run: uv run --frozen --extra dev python3 scripts/check-spec.py
       - name: Lint and format service
         run: |
-          uv run --frozen --extra dev ruff check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_faces.py tests/test_similarity.py tests/test_live_couch.py tests/support.py
-          uv run --frozen --extra dev ruff format --check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_faces.py tests/test_similarity.py tests/test_live_couch.py tests/support.py
+          uv run --frozen --extra dev ruff check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_faces.py tests/test_similarity.py tests/test_live_couch.py tests/test_pipeline.py tests/test_worker.py tests/test_live_worker.py tests/support.py
+          uv run --frozen --extra dev ruff format --check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_faces.py tests/test_similarity.py tests/test_live_couch.py tests/test_pipeline.py tests/test_worker.py tests/test_live_worker.py tests/support.py
       - name: Compile scripts
         run: uv run --frozen --extra dev python3 -m py_compile scripts/*.py
       - name: Unit tests
-        run: uv run --frozen --extra dev python3 -m unittest discover -s tests -p 'test_*.py' -v
+        run: uv run --frozen --extra dev --extra broker python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: Synchronize structure
         run: python3 scripts/sync.py
       - name: Check synchronization
@@ -86,6 +95,6 @@ jobs:
       - name: Install locked service dependencies
         run: |
           python3 -m pip install uv==0.12.19
-          uv sync --frozen --extra dev
+          uv sync --frozen --extra dev --extra broker
       - name: Persist, query, and restart against real CouchDB
-        run: uv run --frozen --extra dev python3 -m unittest discover -s tests -p 'test_live_couch.py' -v
+        run: uv run --frozen --extra dev --extra broker python3 -m unittest discover -s tests -p 'test_live_couch.py' -v
