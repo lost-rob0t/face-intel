@@ -14,8 +14,9 @@ import pykka
 from .config import Settings
 from .couch import CouchStore
 from .documents import annotated_link, normalize_name, picture_from_bytes, prepare_person
-from .errors import InvalidDocument
+from .errors import InvalidDocument, SimilarityUnavailable
 from .face_documents import check_face_bounds, face_candidate
+from .similarity import SFaceEmbedder, aligned_crop, cosine, similarity_options, unit_vector
 from .spec import VERSION, reference, validate, verify_pin
 
 
@@ -240,12 +241,80 @@ def page_options(payload: dict) -> dict:
     return {**payload, "limit": limit}
 
 
+class SimilarityActor(BoundedActor):
+    def __init__(self, store, settings: Settings, embedder_factory=None):
+        super().__init__()
+        self.store, self.settings = store, settings
+        self.factory = embedder_factory
+        self.embedder = None
+
+    def on_receive(self, message: Command):
+        remaining(message.deadline, self.settings.request_timeout)
+        if message.operation == "initialize":
+            if self.factory is not None:
+                self.embedder = self.factory()
+            elif self.settings.sface_model_path:
+                self.embedder = SFaceEmbedder(
+                    self.settings.sface_model_path, self.settings.sface_model_sha256
+                )
+            if self.embedder is not None and (
+                not isinstance(self.embedder.model_id, str)
+                or not 1 <= len(self.embedder.model_id) <= 256
+            ):
+                raise SimilarityUnavailable("Invalid embedding model identity")
+            return (
+                {"modelId": self.embedder.model_id, "metric": "cosine", "cropSize": [112, 112]}
+                if self.embedder is not None
+                else None
+            )
+        if message.operation != "search-similar-faces":
+            raise InvalidDocument("Unsupported similarity operation")
+        payload = similarity_options(message.payload)
+        if self.embedder is None:
+            raise SimilarityUnavailable("Facial similarity is not configured")
+
+        def ask_store(operation, **fields):
+            return self.store.ask(
+                Command(operation, fields, message.deadline),
+                timeout=remaining(message.deadline, self.settings.request_timeout),
+            )
+
+        embeddings, pictures = {}, {}
+        for identifier in [payload["queryPhotoId"], *payload["candidatePhotoIds"]]:
+            if identifier in embeddings:
+                continue
+            remaining(message.deadline, self.settings.request_timeout)
+            pictures[identifier] = ask_store("get", identifier=identifier, dtype="picture")
+            data, _ = ask_store("photo-bytes", identifier=identifier)
+            with aligned_crop(data, self.settings) as image:
+                remaining(message.deadline, self.settings.request_timeout)
+                embeddings[identifier] = unit_vector(self.embedder.embed(image))
+            remaining(message.deadline, self.settings.request_timeout)
+        query = embeddings[payload["queryPhotoId"]]
+        matches = [
+            {
+                "picture": reference(pictures[identifier]),
+                "score": cosine(query, embeddings[identifier]),
+            }
+            for identifier in payload["candidatePhotoIds"]
+        ]
+        matches.sort(key=lambda item: (-item["score"], item["picture"]["id"]))
+        return {
+            "query": reference(pictures[payload["queryPhotoId"]]),
+            "modelId": self.embedder.model_id,
+            "metric": "cosine",
+            "matches": matches[: payload["limit"]],
+            "candidateCount": len(matches),
+        }
+
+
 class TargetActor(BoundedActor):
-    def __init__(self, persons, photos, faces, settings: Settings):
+    def __init__(self, persons, photos, faces, similarity, settings: Settings):
         super().__init__()
         self.persons = persons
         self.photos = photos
         self.faces = faces
+        self.similarity = similarity
         self.settings = settings
 
     def forward(self, actor, operation: str, payload, deadline):
@@ -265,7 +334,21 @@ class TargetActor(BoundedActor):
         if not isinstance(extension, dict):
             raise InvalidDocument("extensions.faceIntel must be an object")
         operation = options.get("operation")
-        if operation in {"ingest-face-observation", "ingest-candidate-person"}:
+        if operation == "search-similar-faces":
+            if set(options) - {"operation", "candidatePhotoIds", "limit"}:
+                raise InvalidDocument("Unexpected similarity Target options")
+            result = self.forward(
+                self.similarity,
+                operation,
+                {
+                    "queryPhotoId": target["target"],
+                    "candidatePhotoIds": options.get("candidatePhotoIds"),
+                    "limit": options.get("limit", 20),
+                },
+                message.deadline,
+            )
+            documents = []
+        elif operation in {"ingest-face-observation", "ingest-candidate-person"}:
             document = options.get("document")
             if not isinstance(document, dict) or document.get("id") != target["target"]:
                 raise InvalidDocument("options.document.id must match target")
@@ -410,12 +493,14 @@ class TargetActor(BoundedActor):
         if not isinstance(extension, dict):
             raise InvalidDocument("extensions.faceIntel must be an object")
         extension["resultRefs"] = [reference(document) for document in documents]
+        if operation == "search-similar-faces":
+            extension["similarity"] = result
         validate(completed, "target", self.settings.dataset)
         return {"target": completed, "documents": documents, "nextCursor": result.get("nextCursor")}
 
 
 class FaceIntelSystem:
-    def __init__(self, settings: Settings, store=None):
+    def __init__(self, settings: Settings, store=None, embedder_factory=None):
         verify_pin()
         self.settings = settings
         self.refs = []
@@ -429,7 +514,14 @@ class FaceIntelSystem:
             self.refs.append(self.photos)
             self.faces = FaceActor.start(self.store, settings)
             self.refs.append(self.faces)
-            self.targets = TargetActor.start(self.persons, self.photos, self.faces, settings)
+            self.similarity = SimilarityActor.start(self.store, settings, embedder_factory)
+            self.refs.append(self.similarity)
+            self.similarity_profile = self.similarity.ask(
+                Command("initialize", {}), timeout=settings.request_timeout
+            )
+            self.targets = TargetActor.start(
+                self.persons, self.photos, self.faces, self.similarity, settings
+            )
             self.refs.append(self.targets)
         except BaseException:
             self.close()
@@ -457,6 +549,9 @@ class FaceIntelSystem:
             "link-face-person",
         }:
             actor = self.faces
+        elif operation == "search-similar-faces":
+            payload = similarity_options(payload)
+            actor = self.similarity
         elif operation == "execute-target":
             actor = self.targets
         else:
@@ -500,5 +595,10 @@ class FaceIntelSystem:
                 "face-person-candidate",
             ],
         }
+        if self.similarity_profile:
+            manifest["capabilities"].append("face.similarity.search")
+            manifest["extensions"] = {
+                "faceIntel": {"similarity": deepcopy(self.similarity_profile)}
+            }
         validate(manifest, "actor-manifest", self.settings.dataset)
         return manifest

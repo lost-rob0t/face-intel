@@ -8,6 +8,28 @@ permissions:
   contents: read
 
 jobs:
+  sface-inference:
+    runs-on: ubuntu-latest
+    env:
+      FACE_INTEL_TEST_SFACE_MODEL: /tmp/face-intel-sface.onnx
+      FACE_INTEL_TEST_SFACE_SHA256: 0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install locked similarity dependencies
+        run: |
+          python3 -m pip install uv==0.12.19
+          uv sync --frozen --extra dev --extra similarity
+      - name: Fetch pinned model for inference validation
+        run: >-
+          curl --fail --location --retry 3
+          https://media.githubusercontent.com/media/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_recognition_sface/face_recognition_sface_2021dec.onnx
+          --output "$FACE_INTEL_TEST_SFACE_MODEL"
+      - name: Verify real inference and actor integration
+        run: uv run --frozen --extra dev --extra similarity python3 -m unittest discover -s tests -p 'test_similarity.py' -v
+
   rage:
     runs-on: ubuntu-latest
     steps:
@@ -23,8 +45,8 @@ jobs:
         run: uv run --frozen --extra dev python3 scripts/check-spec.py
       - name: Lint and format service
         run: |
-          uv run --frozen --extra dev ruff check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_faces.py tests/test_live_couch.py tests/support.py
-          uv run --frozen --extra dev ruff format --check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_faces.py tests/test_live_couch.py tests/support.py
+          uv run --frozen --extra dev ruff check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_faces.py tests/test_similarity.py tests/test_live_couch.py tests/support.py
+          uv run --frozen --extra dev ruff format --check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_faces.py tests/test_similarity.py tests/test_live_couch.py tests/support.py
       - name: Compile scripts
         run: uv run --frozen --extra dev python3 -m py_compile scripts/*.py
       - name: Unit tests

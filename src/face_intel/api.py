@@ -12,7 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .actors import FaceIntelSystem
 from .config import Settings
-from .errors import Conflict, InvalidDocument, NotFound, StorageUnavailable
+from .errors import Conflict, InvalidDocument, NotFound, SimilarityUnavailable, StorageUnavailable
 from .spec import VERSION
 
 
@@ -51,12 +51,12 @@ async def read_object(request: Request) -> dict:
     return result
 
 
-def create_app(settings: Settings | None = None, store=None) -> FastAPI:
+def create_app(settings: Settings | None = None, store=None, embedder_factory=None) -> FastAPI:
     settings = settings or Settings.from_env()
 
     @asynccontextmanager
     async def lifespan(app):
-        system = await run_in_threadpool(FaceIntelSystem, settings, store)
+        system = await run_in_threadpool(FaceIntelSystem, settings, store, embedder_factory)
         app.state.system = system
         try:
             yield
@@ -89,6 +89,8 @@ def create_app(settings: Settings | None = None, store=None) -> FastAPI:
             status, detail = 409, str(error)
         elif isinstance(error, pykka.Timeout):
             status, detail = 503, "Request timed out; completion may still occur"
+        elif isinstance(error, SimilarityUnavailable):
+            status, detail = 503, "Facial similarity engine is unavailable"
         else:
             status, detail = 503, "Actor service or durable store is unavailable"
         return JSONResponse({"detail": detail}, status_code=status)
@@ -98,6 +100,7 @@ def create_app(settings: Settings | None = None, store=None) -> FastAPI:
         NotFound,
         Conflict,
         StorageUnavailable,
+        SimilarityUnavailable,
         queue.Full,
         pykka.Timeout,
         pykka.ActorDeadError,
@@ -165,6 +168,10 @@ def create_app(settings: Settings | None = None, store=None) -> FastAPI:
     @app.post("/v1/targets", dependencies=secured)
     async def target(request: Request):
         return await dispatch(request, "execute-target", await read_object(request))
+
+    @app.post("/v1/search/face-similarity", dependencies=secured)
+    async def search_similarity(request: Request):
+        return await dispatch(request, "search-similar-faces", await read_object(request))
 
     @app.post("/v1/face-observations", dependencies=secured)
     async def ingest_face(request: Request):

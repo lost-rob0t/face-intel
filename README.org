@@ -14,8 +14,8 @@ Person records, explicit photo/face-to-Person annotations,
 exact normalized name/alias search, and canonical Target dispatch. CouchDB stores
 canonical documents and original images. The service owns its HTTP interface.
 
-This foundation implements record management and explicit annotations. It does
-not implement biometric matching, face-to-name identification, inferred gender,
+This foundation implements record management and explicit annotations. It supports optional supplied-crop similarity (see below), but does
+not implement automatic identity matching, face-to-name identification, inferred gender,
 or automatic person enrichment. Later Person data modules have a separate roadmap
 in =roam/indexes/person-data-roadmap.org=.
 
@@ -198,6 +198,71 @@ leased, scheduled, or consumed from a broker by this slice. Scheduling fields
 are the responsibility of the caller's scheduler. Large photos should use raw
 HTTP upload; Target JSON bodies are capped at 1 MiB including base64 encoding.
 
+* Facial Similarity of Supplied Crops
+
+The optional similarity engine consumes stored Pictures containing single,
+already aligned 112x112 face crops. The crop producer must perform detection,
+landmark alignment, and EXIF normalization before uploading through =POST
+/v1/photos=. Resizing a bounding box alone does not establish SFace alignment.
+This engine does not crop source photographs or scan all stored people.
+
+Install =uv sync --frozen --extra similarity= and configure both
+=FACE_INTEL_SFACE_MODEL= (local ONNX path) and =FACE_INTEL_SFACE_SHA256= (lowercase
+SHA-256 digest). Startup loads the verified model bytes in a dedicated bounded
+actor. Missing configuration leaves the foundation available and similarity
+unadvertised; invalid model configuration fails startup. No model download occurs
+at runtime. The manifest advertises =face.similarity.search= and the model ID,
+cosine metric, and crop dimensions only when enabled.
+
+The initial backend is the float32 OpenCV Zoo SFace model:
+- Source commit: =47534e27c9851bb1128ccc0102f1145e27f23f98=.
+- File: =models/face_recognition_sface/face_recognition_sface_2021dec.onnx=.
+- SHA-256: =0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79=.
+- Download: [[https://media.githubusercontent.com/media/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_recognition_sface/face_recognition_sface_2021dec.onnx][Pinned OpenCV Zoo model]]. Keep downloaded model files outside the repository.
+
+Send an authenticated =POST /v1/search/face-similarity=:
+
+#+begin_src json
+{
+  "queryPhotoId": "picture:sha256:<query-crop-hash>",
+  "candidatePhotoIds": ["picture:sha256:<candidate-crop-hash>"],
+  "limit": 20
+}
+#+end_src
+
+One candidate gives a pairwise comparison. Up to 100 distinct candidate IDs are
+allowed; limit is 1-100 (default 20). The query may also appear in the candidate
+list; each distinct ID is embedded once per request. Results contain =query=,
+=modelId= (including the exact model hash), =metric: cosine=, =candidateCount=,
+and ranked =matches= with typed =picture= references and =score=. Scores range
+from -1 to 1; ties sort by Picture ID. Results reflect the supplied list, not a
+global nearest-neighbor index. Any missing, malformed, or unaligned-size crop
+fails the entire request. No partial ranking is returned.
+
+Cosine scores are not probabilities or identity confirmation. No default identity
+threshold is applied. The engine does not modify Persons, candidate annotations,
+or relations, and does not persist or expose embeddings. Model changes produce
+different model IDs and require separate calibration on representative data.
+
+The same operation runs via =POST /v1/targets=: set =target= to the query Picture
+ID and =options= to =operation: search-similar-faces=, =candidatePhotoIds=, and
+optional =limit=. The completed Target contains the result in
+=extensions.faceIntel.similarity=; =documents= and =resultRefs= are empty because
+this read-only operation creates no canonical documents.
+
+For real inference validation, set =FACE_INTEL_TEST_SFACE_MODEL= and
+=FACE_INTEL_TEST_SFACE_SHA256= to the pinned model, then run:
+
+#+begin_src sh
+uv run --frozen --extra dev --extra similarity python3 -m unittest discover -s tests -p 'test_similarity.py' -v
+#+end_src
+
+That smoke test compares 128-dimensional output against OpenCV FaceRecognizerSF
+for a deterministic color/spatial fixture. It checks inference and preprocessing,
+not recognition accuracy. Without a model it is explicitly skipped. The actor
+checks deadlines between reads and inference calls; an already-running native
+inference cannot be interrupted, but expired work starts no further model calls.
+
 * Reliability and Limits
 
 - Person creation and identical retries are idempotent. To edit a Person,
@@ -225,7 +290,7 @@ HTTP upload; Target JSON bodies are capped at 1 MiB including base64 encoding.
 
 =TargetActor= routes to =PersonActor=, =PhotoActor=, and =FaceActor=. Those actors send immutable
 command envelopes to =StoreActor=, which owns CouchDB state and its HTTP client.
-Caller mappings are copied before mailbox transfer. Actors stop in reverse dependency
+SimilarityActor owns optional model inference. Caller mappings are copied before mailbox transfer. Actors stop in reverse dependency
 order and startup failures clean up only this system's actor references.
 
 To add a Person module, retain canonical generated documents and typed references,
@@ -271,5 +336,6 @@ existing =scripts/implement.py= and =scripts/mark-design.py= workflow.
 
 | Date | Change | Author or actor | Evidence |
 |------+--------+-----------------+----------|
+| 2026-10-10 | Document optional crop similarity and pinned model configuration | Codex | Similarity source and regression tests |
 | 2026-10-03 | Replace template landing page with executable foundation guide | Codex | Source, regression tests, and pinned generated contract |
 | 2026-10-04 | Consume source-generated face observations and candidate-person records | Codex | Star Language PR #201, consumer source and tests |

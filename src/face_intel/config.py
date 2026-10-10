@@ -16,8 +16,14 @@ class Settings:
     max_photo_pixels: int = 20_000_000
     request_timeout: float = 30.0
     couch_timeout: float = 5.0
+    sface_model_path: str = ""
+    sface_model_sha256: str = ""
 
     def __post_init__(self) -> None:
+        if bool(self.sface_model_path) != bool(self.sface_model_sha256):
+            raise ValueError("Set both FACE_INTEL_SFACE_MODEL and FACE_INTEL_SFACE_SHA256")
+        if self.sface_model_sha256 and not re.fullmatch(r"[0-9a-f]{64}", self.sface_model_sha256):
+            raise ValueError("FACE_INTEL_SFACE_SHA256 must be a lowercase SHA-256 digest")
         url = urlsplit(self.couch_url)
         if (
             url.scheme not in {"http", "https"}
@@ -53,4 +59,6 @@ class Settings:
             couch_username=os.environ.get("COUCHDB_USERNAME", ""),
             couch_password=os.environ.get("COUCHDB_PASSWORD", ""),
             dataset=os.environ.get("FACE_INTEL_DATASET", "face-intel"),
+            sface_model_path=os.environ.get("FACE_INTEL_SFACE_MODEL", ""),
+            sface_model_sha256=os.environ.get("FACE_INTEL_SFACE_SHA256", ""),
         )

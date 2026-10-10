@@ -12,3 +12,9 @@ The additive `org.starintel/face-intel@1` source lives under
 `contracts/face_extension/` retain exact upstream bytes and have a separate pin.
 
 This change does not select a separate project-wide license for face-intel.
+
+Optional similarity uses installed OpenCV (Apache-2.0) and NumPy (BSD-3-Clause)
+packages. Model weights are not vendored. The documented SFace model is from
+[OpenCV Zoo at 47534e27c9851bb1128ccc0102f1145e27f23f98](https://github.com/opencv/opencv_zoo/tree/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_recognition_sface),
+whose model directory includes an Apache-2.0 LICENSE. Operators distributing the
+weights must retain the upstream license and notices. Retrieved 2026-10-10.
