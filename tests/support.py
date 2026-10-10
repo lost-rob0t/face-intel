@@ -9,7 +9,6 @@ from PIL import Image
 from face_intel.couch import content
 from face_intel.documents import LINK_PREDICATE
 from face_intel.errors import Conflict, NotFound
-from face_intel.face_documents import FACE_CANDIDATE_PREDICATE
 
 TOKEN = "fixture-token-for-tests-only-00000000"
 
@@ -32,31 +31,8 @@ def photo_bytes(width=3, height=4):
     return buffer.getvalue()
 
 
-def candidate_person(identifier="candidate-person:fixture", **fields):
-    return {
-        **person(identifier=identifier),
-        "dtype": "candidate-person",
-        "candidateStatus": "candidate",
-        "verificationStatus": "candidate",
-        "annotationBasis": "Supplied fixture record",
-        **fields,
-    }
-
-
-def face_observation(picture_record, identifier="face-observation:fixture", **fields):
-    return {
-        "id": identifier,
-        "dataset": "face-intel",
-        "dtype": "face-observation",
-        "schemaVersion": "0.10.1",
-        "picture": {"schema": "org.starintel/core@1/picture", "id": picture_record["id"]},
-        "x": 0,
-        "y": 0,
-        "width": 2,
-        "height": 3,
-        "annotationBasis": "Supplied fixture region",
-        **fields,
-    }
+def candidate_person(identifier="person:candidate-fixture", **fields):
+    return person(identifier=identifier, verificationStatus="candidate", **fields)
 
 
 class MemoryStore:
@@ -109,7 +85,7 @@ class MemoryStore:
             rows = [
                 d
                 for d in self.documents.values()
-                if d["dtype"] in {"person", "candidate-person"}
+                if d["dtype"] == "person"
                 and value in d.get("extensions", {}).get("faceIntel", {}).get("nameKeys", [])
             ]
         elif view == "photo_links":
@@ -118,15 +94,9 @@ class MemoryStore:
                 for d in self.documents.values()
                 if d["dtype"] == "relation"
                 and d["predicate"] == LINK_PREDICATE
+                and d["source"]["schema"] == "org.starintel/core@1/picture"
+                and d["destination"]["schema"] == "org.starintel/core@1/person"
                 and d["destination"]["id"] == value
-            ]
-        elif view == "face_candidates":
-            rows = [
-                d
-                for d in self.documents.values()
-                if d["dtype"] == "face-person-candidate"
-                and d["predicate"] == FACE_CANDIDATE_PREDICATE
-                and d["source"]["id"] == value
             ]
         else:
             raise AssertionError("Unknown test view")

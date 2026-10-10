@@ -10,11 +10,10 @@ import httpx
 from .config import Settings
 from .documents import LINK_PREDICATE
 from .errors import Conflict, NotFound, StorageUnavailable
-from .face_documents import FACE_CANDIDATE_PREDICATE
 from .spec import validate
 
 VIEW_NAMES = """function(doc) {
-  if (doc.dtype !== 'person' && doc.dtype !== 'candidate-person') return;
+  if (doc.dtype !== 'person') return;
   if (doc.deleted || !doc.extensions) return;
   var state = doc.extensions.faceIntel;
   if (!state || !Array.isArray(state.nameKeys)) return;
@@ -22,14 +21,11 @@ VIEW_NAMES = """function(doc) {
 }"""
 VIEW_LINKS = """function(doc) {
   if (doc.dtype !== 'relation' || doc.deleted || !doc.destination) return;
-  if (doc.predicate !== 'LINK_PREDICATE') return;
+  if (doc.predicate !== 'LINK_PREDICATE' || !doc.source) return;
+  if (doc.source.schema !== 'org.starintel/core@1/picture' ||
+      doc.destination.schema !== 'org.starintel/core@1/person') return;
   emit([doc.dataset, doc.destination.id], null);
 }""".replace("LINK_PREDICATE", LINK_PREDICATE)
-VIEW_FACE_CANDIDATES = """function(doc) {
-  if (doc.dtype !== 'face-person-candidate' || doc.deleted || !doc.source) return;
-  if (doc.predicate !== 'FACE_PREDICATE') return;
-  emit([doc.dataset, doc.source.id], null);
-}""".replace("FACE_PREDICATE", FACE_CANDIDATE_PREDICATE)
 
 
 def public_document(raw: dict) -> dict:
@@ -85,19 +81,23 @@ class CouchStore:
         views = {
             "by_name": {"map": VIEW_NAMES},
             "photo_links": {"map": VIEW_LINKS},
-            "face_candidates": {"map": VIEW_FACE_CANDIDATES},
         }
         for _ in range(3):
             try:
                 current = self.request("GET", path).json()
             except NotFound:
                 current = {"_id": "_design/face-intel"}
-            if all(current.get("views", {}).get(name) == value for name, value in views.items()):
+            if "face_candidates" not in current.get("views", {}) and all(
+                current.get("views", {}).get(name) == value for name, value in views.items()
+            ):
                 return
             desired = {
                 **current,
                 "language": "javascript",
-                "views": {**current.get("views", {}), **views},
+                "views": {
+                    **{k: v for k, v in current.get("views", {}).items() if k != "face_candidates"},
+                    **views,
+                },
             }
             try:
                 self.request("PUT", path, json=desired)
@@ -185,15 +185,7 @@ class CouchStore:
         page = rows[:limit]
         documents = [public_document(row["doc"]) for row in page]
         for document in documents:
-            dtype = (
-                document["dtype"]
-                if view == "by_name"
-                else "face-person-candidate"
-                if view == "face_candidates"
-                else "relation"
-            )
-            if view == "by_name" and dtype not in {"person", "candidate-person"}:
-                raise StorageUnavailable("Invalid document in the name index")
+            dtype = "person" if view == "by_name" else "relation"
             validate(document, dtype, self.settings.dataset)
         return {"documents": documents, "nextCursor": page[-1]["id"] if len(rows) > limit else None}
 

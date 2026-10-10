@@ -99,11 +99,13 @@ class CouchTests(unittest.TestCase):
             "_rev": "0-fixture",
             "views": {
                 "unrelated": {"map": "function(doc) { emit(doc.id, null); }"},
+                "face_candidates": {"map": "function(doc) { emit(doc.id, null); }"},
             },
         }
         self.store.initialize()
         design = self.fixture.documents["_design/face-intel"]
         self.assertIn("unrelated", design["views"])
+        self.assertNotIn("face_candidates", design["views"])
         count = len([r for r in self.fixture.calls if r.method == "PUT"])
         self.store.initialize()
         # The database create is retried, but the identical design document is untouched.

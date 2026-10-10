@@ -3,8 +3,14 @@
 :END:
 #+title: Source-generated face observation and candidate records
 #+description: Consume the additive Star Language library for supplied observations and explicit candidate annotations.
-#+status: IMPLEMENTED
+#+status: SUPERSEDED
 #+filetags: :face-intel:design:contracts:
+
+* Superseded by Core-Only Records
+
+The user replaced this design with [[id:face-intel-core-only-20261010][core-only records]]
+on 2026-10-10. Its execution record remains historical evidence. The current
+service no longer consumes or accepts this extension.
 
 * Scope
 
