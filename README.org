@@ -9,7 +9,8 @@
 * Working Foundation
 
 face-intel is a standalone Person data actor service. Pykka actors own supplied
-Person records, photo ingestion, explicit candidate photo-to-Person annotations,
+Person records, photo ingestion, supplied face-region observations, candidate
+Person records, explicit photo/face-to-Person annotations,
 exact normalized name/alias search, and canonical Target dispatch. CouchDB stores
 canonical documents and original images. The service owns its HTTP interface.
 
@@ -52,16 +53,58 @@ The database user must be able to create the database and maintain its
 
 =src/face_intel/contracts/= contains unmodified generated Star Language 0.10.1
 schema and Python types, =core.star=, and the upstream release lock from commit
-=5837e9924cf4ead99ccf085521121c7f6ad4703e=. =pin.json= records source and file hashes.
+=e9ec1d883627d186aafe0b3647bdc29baea03543=. =pin.json= records source and file hashes.
 Startup and =scripts/check-spec.py= verify the dependency against the upstream
-release lock. The current pin is from =codex/starintel-0101-consumer-contract=;
-it does not claim that branch has been merged into upstream main.
+release lock. This core pin is from upstream main.
 
 Public objects use =id=, =schemaVersion=, lowerCamelCase fields, and typed
 =StarReference= objects. =Photo= in this service maps to the canonical =Picture=
 type. CouchDB =_id=, =_rev=, and =_attachments= are handled only in the store adapter;
 the public current revision is =rev=. Generated files must not be edited.
 See =THIRD_PARTY.md= for upstream attribution and retained license.
+
+* Face Observation Source Extension
+
+[[https://github.com/lost-rob0t/star-lang/pull/201][Star Language PR #201]] owns
+=org.starintel/face-intel@1= as an additive library importing core =0.10.1= by
+exact source digest. =contracts/face_extension/= pins its source, generated
+schema, Python types, manifests, fixtures, and release lock at
+=cf7dbd357aeb557ed97435e3c06f1b7d367dbf50=. Startup checks the import digest and
+core release lock as well as artifact hashes. The upstream extension is a draft
+prerequisite; this consumer does not claim it has merged.
+
+| dtype | Source-generated type | Purpose |
+|-------+-----------------------+---------|
+| face-observation | FaceObservation | Supplied rectangle in a stored Picture, with a stable observation ID |
+| candidate-person | CandidatePerson | Tentative supplied Person fields with explicit candidate metadata |
+| face-person-candidate | FacePersonCandidate | Explicit candidate Relation between an observation and a Person record |
+
+Document =schemaVersion= remains =0.10.1=; the extension release is =0.1.0=.
+Both candidate types require =candidateStatus: candidate= and
+=verificationStatus: candidate=. Observation rectangles must fit inside the
+stored Picture. References retain their owning library. Name search includes
+candidate Persons, keeping their tentative status in returned documents.
+Annotation writes preserve existing Person identity fields.
+
+The face record is a supplied image-region annotation. A face ID identifies
+that observation; this release has no detector, embeddings, or biometric matcher.
+
+#+begin_src json
+{
+  "id": "face-observation:example", "dataset": "face-intel",
+  "dtype": "face-observation", "schemaVersion": "0.10.1",
+  "picture": {"schema": "org.starintel/core@1/picture", "id": "picture:existing"},
+  "x": 0, "y": 0, "width": 32, "height": 32,
+  "annotationBasis": "Supplied image-region annotation"
+}
+#+end_src
+
+Create this through =POST /v1/face-observations= after storing its Picture.
+Candidate Persons use =POST /v1/candidate-persons= with the same canonical Person
+fields plus the required status and =annotationBasis=. For =POST /v1/links/face-person=,
+send =faceId=, =personId=, =basis=, and =personType= (=person= by default or
+=candidate-person=). =GET /v1/face-observations/<id>= returns the observation,
+Picture, Person records, and paginated candidate Relations.
 
 * HTTP Interface
 
@@ -81,6 +124,11 @@ as explicitly injected test fixtures.
 | GET | /v1/photo-bytes/<id> | Original image bytes |
 | POST | /v1/links/photo-person | photoId, personId, basis |
 | POST | /v1/targets | Canonical Target; same actor operations |
+| POST | /v1/face-observations | Supplied source-generated FaceObservation |
+| GET | /v1/face-observations/<id> | Observation, Picture, Persons, candidate Relations |
+| POST | /v1/candidate-persons | Supplied source-generated CandidatePerson |
+| GET | /v1/candidate-persons/<id> | CandidatePerson record |
+| POST | /v1/links/face-person | faceId, personId, personType, basis |
 
 Search normalizes Unicode with NFKC and casefold, then collapses whitespace. It
 matches complete names or aliases; this is not fuzzy text or biometric search.
@@ -129,6 +177,11 @@ Targets address =actor: face-intel=. =options= is a JSON object. Operations:
 | ingest-person | Person ID | document with matching id | Person |
 | ingest-photo | Content hash Picture ID | photoBase64 | Picture |
 | link-photo-person | Picture ID | personId, basis | Person, Picture, Relation |
+| ingest-face-observation | Observation ID | document with matching id | FaceObservation |
+| ingest-candidate-person | CandidatePerson ID | document with matching id | CandidatePerson |
+| get-face | Observation ID | limit, after | FaceObservation, Picture, Persons, candidate Relations |
+| get-candidate-person | CandidatePerson ID | None | CandidatePerson |
+| link-face-person | Observation ID | personId, personType, basis | FaceObservation, Picture, Person, candidate Relation |
 
 #+begin_src json
 {
@@ -170,7 +223,7 @@ HTTP upload; Target JSON bodies are capped at 1 MiB including base64 encoding.
 
 * Actor Ownership
 
-=TargetActor= routes to =PersonActor= and =PhotoActor=. Those actors send immutable
+=TargetActor= routes to =PersonActor=, =PhotoActor=, and =FaceActor=. Those actors send immutable
 command envelopes to =StoreActor=, which owns CouchDB state and its HTTP client.
 Caller mappings are copied before mailbox transfer. Actors stop in reverse dependency
 order and startup failures clean up only this system's actor references.
@@ -185,14 +238,15 @@ Do not expose data-specific operations in generic StarIntel ingest by default.
 #+begin_src sh
 uv run --frozen --extra dev python3 scripts/check-spec.py
 uv run --frozen --extra dev python3 -m unittest discover -s tests -p 'test_*.py' -v
-uv run --frozen --extra dev ruff check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_live_couch.py tests/support.py
+uv run --frozen --extra dev ruff check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_faces.py tests/test_live_couch.py tests/support.py
 python3 scripts/sync.py
 python3 scripts/sync.py --check
 python3 scripts/validate-docs.py
 #+end_src
 
 CI also starts real CouchDB and tests persistence, name views, Target output,
-image download, and survival across actor/app restart. To run that test locally
+image download, face observations, candidate-person links, and survival across
+actor/app restart. To run that test locally
 against an existing server, provide credentials in the environment and set
 =FACE_INTEL_RUN_LIVE_COUCH=1=. It creates and deletes its own unique test database.
 Without that opt-in the live test is skipped; a skip is not a passing integration test.
@@ -210,6 +264,7 @@ existing =scripts/implement.py= and =scripts/mark-design.py= workflow.
 | Approval area | Required authority | State | Evidence required | Evidence reference |
 |---------------+--------------------+-------+-------------------+--------------------|
 | Foundation implementation and local pin | Repository owner | APPROVED | Explicit instruction | User messages, 2026-10-03 |
+| Face source extension and consumer | Repository owner | APPROVED | Explicit instruction | User message, 2026-10-04; source-extension design |
 | Deployment or merge | Repository owner | NOT STARTED | Separate release instruction | Reviewable PR only |
 
 * Changelog
@@ -217,3 +272,4 @@ existing =scripts/implement.py= and =scripts/mark-design.py= workflow.
 | Date | Change | Author or actor | Evidence |
 |------+--------+-----------------+----------|
 | 2026-10-03 | Replace template landing page with executable foundation guide | Codex | Source, regression tests, and pinned generated contract |
+| 2026-10-04 | Consume source-generated face observations and candidate-person records | Codex | Star Language PR #201, consumer source and tests |

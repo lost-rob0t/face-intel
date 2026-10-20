@@ -1,0 +1,191 @@
+[
+  {
+    "name": "face",
+    "type": "#/$defs/FaceObservation",
+    "document": {
+      "id": "face-observation:fixture",
+      "dataset": "face-intel",
+      "dtype": "face-observation",
+      "schemaVersion": "0.10.1",
+      "picture": {
+        "schema": "org.starintel/core@1/picture",
+        "id": "picture:fixture"
+      },
+      "x": 0,
+      "y": 0,
+      "width": 3,
+      "height": 4,
+      "annotationBasis": "Supplied fixture annotation"
+    },
+    "valid": true
+  },
+  {
+    "name": "person",
+    "type": "#/$defs/CandidatePerson",
+    "document": {
+      "id": "candidate-person:fixture",
+      "dataset": "face-intel",
+      "dtype": "candidate-person",
+      "schemaVersion": "0.10.1",
+      "candidateStatus": "candidate",
+      "verificationStatus": "candidate",
+      "annotationBasis": "Supplied fixture record",
+      "fullName": "Fixture Person"
+    },
+    "valid": true
+  },
+  {
+    "name": "link",
+    "type": "#/$defs/FacePersonCandidate",
+    "document": {
+      "id": "face-person-candidate:fixture",
+      "dataset": "face-intel",
+      "dtype": "face-person-candidate",
+      "schemaVersion": "0.10.1",
+      "source": {
+        "schema": "org.starintel/face-intel@1/face-observation",
+        "id": "face-observation:fixture"
+      },
+      "destination": {
+        "schema": "org.starintel/face-intel@1/candidate-person",
+        "id": "candidate-person:fixture"
+      },
+      "predicate": "org.starintel/face-intel@1/candidate-person-for-face",
+      "candidateStatus": "candidate",
+      "verificationStatus": "candidate",
+      "annotationBasis": "Supplied fixture claim"
+    },
+    "valid": true
+  },
+  {
+    "name": "negative-pixel",
+    "type": "#/$defs/FaceObservation",
+    "document": {
+      "id": "face-observation:fixture",
+      "dataset": "face-intel",
+      "dtype": "face-observation",
+      "schemaVersion": "0.10.1",
+      "picture": {
+        "schema": "org.starintel/core@1/picture",
+        "id": "picture:fixture"
+      },
+      "x": -1,
+      "y": 0,
+      "width": 3,
+      "height": 4,
+      "annotationBasis": "Supplied fixture annotation"
+    },
+    "valid": false
+  },
+  {
+    "name": "empty-rectangle",
+    "type": "#/$defs/FaceObservation",
+    "document": {
+      "id": "face-observation:fixture",
+      "dataset": "face-intel",
+      "dtype": "face-observation",
+      "schemaVersion": "0.10.1",
+      "picture": {
+        "schema": "org.starintel/core@1/picture",
+        "id": "picture:fixture"
+      },
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 4,
+      "annotationBasis": "Supplied fixture annotation"
+    },
+    "valid": false
+  },
+  {
+    "name": "untyped-reference",
+    "type": "#/$defs/FaceObservation",
+    "document": {
+      "id": "face-observation:fixture",
+      "dataset": "face-intel",
+      "dtype": "face-observation",
+      "schemaVersion": "0.10.1",
+      "picture": "picture:fixture",
+      "x": 0,
+      "y": 0,
+      "width": 3,
+      "height": 4,
+      "annotationBasis": "Supplied fixture annotation"
+    },
+    "valid": false
+  },
+  {
+    "name": "empty-basis",
+    "type": "#/$defs/CandidatePerson",
+    "document": {
+      "id": "candidate-person:fixture",
+      "dataset": "face-intel",
+      "dtype": "candidate-person",
+      "schemaVersion": "0.10.1",
+      "candidateStatus": "candidate",
+      "verificationStatus": "candidate",
+      "annotationBasis": "   ",
+      "fullName": "Fixture Person"
+    },
+    "valid": false
+  },
+  {
+    "name": "confirmed-person",
+    "type": "#/$defs/CandidatePerson",
+    "document": {
+      "id": "candidate-person:fixture",
+      "dataset": "face-intel",
+      "dtype": "candidate-person",
+      "schemaVersion": "0.10.1",
+      "candidateStatus": "confirmed",
+      "verificationStatus": "candidate",
+      "annotationBasis": "Supplied fixture record",
+      "fullName": "Fixture Person"
+    },
+    "valid": false
+  },
+  {
+    "name": "confirmed-link",
+    "type": "#/$defs/FacePersonCandidate",
+    "document": {
+      "id": "face-person-candidate:fixture",
+      "dataset": "face-intel",
+      "dtype": "face-person-candidate",
+      "schemaVersion": "0.10.1",
+      "source": {
+        "schema": "org.starintel/face-intel@1/face-observation",
+        "id": "face-observation:fixture"
+      },
+      "destination": {
+        "schema": "org.starintel/face-intel@1/candidate-person",
+        "id": "candidate-person:fixture"
+      },
+      "predicate": "org.starintel/face-intel@1/candidate-person-for-face",
+      "candidateStatus": "confirmed",
+      "verificationStatus": "candidate",
+      "annotationBasis": "Supplied fixture claim"
+    },
+    "valid": false
+  },
+  {
+    "name": "unexpected-fields",
+    "type": "#/$defs/FaceObservation",
+    "document": {
+      "id": "face-observation:fixture",
+      "dataset": "face-intel",
+      "dtype": "face-observation",
+      "schemaVersion": "0.10.1",
+      "picture": {
+        "schema": "org.starintel/core@1/picture",
+        "id": "picture:fixture"
+      },
+      "x": 0,
+      "y": 0,
+      "width": 3,
+      "height": 4,
+      "annotationBasis": "Supplied fixture annotation",
+      "other": true
+    },
+    "valid": false
+  }
+]

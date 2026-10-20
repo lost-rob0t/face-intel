@@ -16,7 +16,7 @@ from face_intel.spec import validate, verify_pin
 class SpecTests(unittest.TestCase):
     def test_pin_matches_upstream_release_hashes(self):
         pin = verify_pin()
-        self.assertEqual(pin["commit"], "5837e9924cf4ead99ccf085521121c7f6ad4703e")
+        self.assertEqual(pin["commit"], "e9ec1d883627d186aafe0b3647bdc29baea03543")
         self.assertEqual(pin["schemaVersion"], "0.10.1")
         root = files("face_intel.contracts")
         for name, expected in pin["files"].items():

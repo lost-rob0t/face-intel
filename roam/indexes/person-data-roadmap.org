@@ -15,6 +15,11 @@ supplied Person fields, exact names/aliases, photos, and explicit candidate anno
 
 * Next Modules
 
+[[id:face-intel-source-extension-20261004][Source-generated face observations and
+candidate records]] adds supplied image-region IDs, tentative Person records,
+and explicit candidate Relations through a focused FaceActor. Star Language
+owns the extension source and generated contracts; core remains 0.10.1.
+
 | Slice | Capability | Dependency | State |
 |-------+------------+------------+-------|
 | Supplied Person fields | Add focused importers for user-provided accounts, contact records, and biography data | Canonical Person and typed references | NOT STARTED |

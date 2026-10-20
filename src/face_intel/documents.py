@@ -20,7 +20,10 @@ def normalize_name(value: str) -> str:
 
 
 def prepare_person(document: dict, dataset: str) -> Person:
-    validate(document, "person", dataset)
+    dtype = document.get("dtype") if isinstance(document, dict) else None
+    if dtype not in {"person", "candidate-person"}:
+        raise InvalidDocument("Expected Person or CandidatePerson")
+    validate(document, dtype, dataset)
     result = deepcopy(document)
     values = [result.get("fullName", ""), result.get("displayName", "")]
     values.append(" ".join(result.get(k, "") for k in ("fname", "mname", "lname")))
@@ -31,7 +34,10 @@ def prepare_person(document: dict, dataset: str) -> Person:
     if not isinstance(internal, dict):
         raise InvalidDocument("extensions.faceIntel must be an object")
     internal["nameKeys"] = names
-    validate(result, "person", dataset)
+    if dtype == "candidate-person":
+        internal["candidate"] = True
+        internal["status"] = "candidate"
+    validate(result, dtype, dataset)
     return result
 
 

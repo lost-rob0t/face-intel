@@ -23,8 +23,8 @@ jobs:
         run: uv run --frozen --extra dev python3 scripts/check-spec.py
       - name: Lint and format service
         run: |
-          uv run --frozen --extra dev ruff check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_live_couch.py tests/support.py
-          uv run --frozen --extra dev ruff format --check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_live_couch.py tests/support.py
+          uv run --frozen --extra dev ruff check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_faces.py tests/test_live_couch.py tests/support.py
+          uv run --frozen --extra dev ruff format --check src/face_intel tests/test_service.py tests/test_couch.py tests/test_spec.py tests/test_faces.py tests/test_live_couch.py tests/support.py
       - name: Compile scripts
         run: uv run --frozen --extra dev python3 -m py_compile scripts/*.py
       - name: Unit tests
