@@ -1,0 +1,69 @@
+:PROPERTIES:
+:ID: face-intel-core-only-20261010
+:END:
+#+title: Core-only Person, Picture and Relation workflows
+#+description: Remove custom face contracts and represent candidate and confirmed associations using core records.
+#+status: IMPLEMENTED
+#+filetags: :face-intel:design:core:
+
+* Scope and Evidence
+User instructed "Yeah use core only" on 2026-10-10 after discussing candidate
+promotion. Consume only pinned core 0.10.1 generated artifacts. Remove the custom
+face extension dependency and its public document routes, actor and capabilities.
+Person records use core verificationStatus. Image claims use core Relation with
+related-to predicate, Picture source, Person destination, verificationStatus and
+provenance. Optional image-region metadata stays under the core extensions map;
+it introduces no document type or schema library. Crops remain core Pictures.
+Core derived-from Relations can retain crop-to-original provenance.
+
+* Execution Gate and Validation
+Add core Relation ingest/get through HTTP and Target. Verify stored endpoints,
+image-region bounds and supplied claim basis. Candidate/confirmed/rejected are
+application states for image associations; core defines verificationStatus as a
+string. Updates retain IDs, require rev, refresh derived candidate metadata, and
+never implicitly confirm the associated Person. Remove custom generated package
+as a whole without modifying core artifacts. Reject legacy document types; there
+is no deployed service in this session and no automatic database migration.
+Test core schema validation, candidate confirmation, stale revisions, reference
+errors, old-type rejection, auth, Target parity, name views and image bounds.
+
+* Approval Table
+
+| Approval area | Required authority | State | Evidence required | Evidence reference |
+|---------------+--------------------+-------+-------------------+--------------------|
+| Core-only implementation | Repository owner | APPROVED | Explicit instruction | User message in this session, 2026-10-10 |
+| Merge or deployment | Repository owner | NOT STARTED | Release instruction | Local reviewable branch |
+
+* Changelog
+
+| Date | Change | Author or actor | Evidence |
+|------+--------+-----------------+----------|
+| 2026-10-10 | Replace custom extension with core association lifecycle | Codex | User instruction and pinned core spec |
+
+* IMPLEMENTED RAGE Execution Record
+:PROPERTIES:
+:STATUS_EVENT_ID: b72e904d-a040-4c9b-a160-00781a205662
+:RECORDED_AT: 2026-10-10T17:28:38+00:00
+:END:
+
+** Summary
+Remove the custom face spec dependency and use core Person/Picture/Relation documents with revision-checked association status updates.
+
+** Files
+- src/face_intel/spec.py
+- src/face_intel/documents.py
+- src/face_intel/actors.py
+- src/face_intel/couch.py
+- tests/test_faces.py
+
+** Tests
+- 58 tests executed: 57 passed and opt-in live CouchDB test skipped; real SFace inference executed.
+- Core contract pin, lint, formatting, script compilation, wheel/sdist build, and packaged extension removal passed.
+
+** Commits
+- None
+
+** Notes
+- No custom document types or schema libraries remain in the service or wheel. Core generated artifacts are unchanged.
+- Candidate and confirmed Person/Relation states are independent. Core verificationStatus is a string; association state rules are enforced by Python.
+- Legacy custom documents are rejected; no automatic or live database migration performed.
